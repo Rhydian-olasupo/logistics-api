@@ -1,4 +1,4 @@
-package main
+package middleware
 
 import (
 	"encoding/json"
@@ -8,8 +8,8 @@ import (
 
 //ValidateRequestBody is a middleware function to validate request Body
 
-func ValidateRequestBody(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func ValidateRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var newUser models.User
 		if err := json.NewDecoder(r.Body).Decode(&newUser); err != nil {
 			http.Error(w, "Invalid request Body", http.StatusBadRequest)
@@ -25,6 +25,6 @@ func ValidateRequestBody(next http.HandlerFunc) http.HandlerFunc {
 
 		//Proceeds to the next handler if validation passes
 		next.ServeHTTP(w, r)
+	})
 
-	}
 }
