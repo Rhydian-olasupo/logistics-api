@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"go_trial/gorest/handlers"
-	_ "go_trial/gorest/middleware"
+	"go_trial/gorest/middleware"
 	"log"
 	"net/http"
 	"time"
@@ -29,7 +29,7 @@ func main() {
 
 	//Attach middleware to handle request validation
 
-	//r.Use(middleware.ValidateRequestBody)
+	r.Use(middleware.ValidateRequestBody)
 
 	// Define routes
 	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
