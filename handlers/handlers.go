@@ -85,6 +85,10 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.PostForm.Get("name")
 	password := r.PostForm.Get("password")
 
+	// Log what the endpoint is receiving
+	fmt.Printf("Received request for username: %s\n", username)
+	fmt.Printf("Received request for password: %s\n", password)
+
 	// MongoDB client and context
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -96,7 +100,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	var user struct {
 		Password string `json:"password" bson:"password"`
 	}
-	err = db.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			http.Error(w, "User not found", http.StatusNotFound)
