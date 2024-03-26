@@ -33,6 +33,7 @@ func main() {
 
 	// Define routes
 	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
+	r.HandleFunc("/token/login/", db.LoginTokenHandler).Methods("POST")
 
 	srv := &http.Server{
 		Handler:      r,
