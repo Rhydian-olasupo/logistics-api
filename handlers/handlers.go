@@ -21,11 +21,12 @@ type DB struct {
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
-var (
+
+/*var (
 	mongoClient *mongo.Client
 	dbName      = "apiDB"
 	collection  = "logistics"
-)
+)*/
 
 type Response struct {
 	Token string `json:"token" bson:"token"`
@@ -73,6 +74,7 @@ func (db *DB) CreateUserhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
@@ -80,7 +82,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := r.PostForm.Get("username")
+	username := r.PostForm.Get("name")
 	password := r.PostForm.Get("password")
 
 	// MongoDB client and context
@@ -88,13 +90,13 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// MongoDB collection instance
-	collection := mongoClient.Database(dbName).Collection(collection)
+	//collection := mongoClient.Database(dbName).Collection(collection)
 
 	// Find the user by username
 	var user struct {
-		Password string `bson:"password"`
+		Password string `json:"password" bson:"password"`
 	}
-	err = collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	err = db.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -114,7 +116,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 		"username": username,
 		"iat":      time.Now().Unix(),
 	})
-	tokenString, err := token.SignedString([]byte("your_secret_key"))
+	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return

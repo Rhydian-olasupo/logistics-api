@@ -3,25 +3,24 @@ package main
 import (
 	"context"
 	"go_trial/gorest/handlers"
-	"go_trial/gorest/middleware"
+	"go_trial/gorest/utils"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-	client, err := mongo.Connect(context.TODO(), clientOptions)
+	// Initialize MongoDB client
+	client, err := utils.InitMongoClient()
 	if err != nil {
 		panic(err)
 	}
-
 	defer client.Disconnect(context.TODO())
-	collection := client.Database("apiDB").Collection("logistics")
+
+	// Get database collection
+	collection := utils.GetCollection(client, "apiDB", "logistics")
 
 	// Create an instance of your DB
 	db := &handlers.DB{Collection: collection}
@@ -29,7 +28,7 @@ func main() {
 
 	//Attach middleware to handle request validation
 
-	r.Use(middleware.ValidateRequestBody)
+	//r.Use(middleware.ValidateRequestBody)
 
 	// Define routes
 	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
