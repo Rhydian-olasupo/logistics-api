@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"go_trial/gorest/handlers"
-	"go_trial/gorest/middleware"
+	_ "go_trial/gorest/middleware"
 	"log"
 	"net/http"
 	"time"
@@ -24,12 +24,12 @@ func main() {
 	collection := client.Database("apiDB").Collection("logistics")
 
 	// Create an instance of your DB
-	db := &handlers.DB{collection: collection}
+	db := &handlers.DB{Collection: collection}
 	r := mux.NewRouter()
 
 	//Attach middleware to handle request validation
 
-	r.Use(middleware.ValidateRequestBody)
+	//r.Use(middleware.ValidateRequestBody)
 
 	// Define routes
 	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
