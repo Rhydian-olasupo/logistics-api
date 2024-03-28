@@ -151,10 +151,11 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
 	username := r.Context().Value("username").(string)
+	fmt.Println(username)
 
 	// Query database for user details
 	var user models.SingleUser
-	err := db.Collection.FindOne(context.TODO(), bson.M{"username": username}).Decode(&user)
+	err := db.Collection.FindOne(context.TODO(), bson.M{"name": username}).Decode(&user)
 	if err != nil {
 		// Handle errors (e.g., user not found)
 		if err == mongo.ErrNoDocuments {
