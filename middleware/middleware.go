@@ -9,7 +9,10 @@ import (
 	"net/http"
 	"os"
 
+	"go_trial/gorest/utils"
+
 	"github.com/golang-jwt/jwt/v5"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 //ValidateRequestBody is a middleware function to validate request Body
@@ -165,5 +168,50 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			w.Write([]byte("Missing or invalid 'name' field in claims"))
 			return
 		}
+
+		userToken, err := findTokenByUsername(name)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Error finding user token: " + err.Error()))
+			return
+		}
+
+		if userToken != tokenString {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("Access forbidden; Incorrect token"))
+			return
+
+		}
+
+		next.ServeHTTP(w, r)
+
 	})
+}
+
+// Function to query MongoDb collection to find user's token by username
+func findTokenByUsername(username string) (string, error) {
+	// Initialize MongoDB client
+	client, err := utils.InitMongoClient()
+	if err != nil {
+		return "", err
+	}
+	defer client.Disconnect(context.TODO())
+
+	// Get reference to the tokens collection
+	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+
+	// Define context
+	ctx := context.TODO()
+
+	var result struct {
+		Token string `json:"token" bson:"token"`
+	}
+
+	// Query the tokens collection
+	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
+	if err != nil {
+		return "", err
+	}
+
+	return result.Token, nil
 }
