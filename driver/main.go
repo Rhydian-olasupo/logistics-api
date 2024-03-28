@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"go_trial/gorest/handlers"
-	"go_trial/gorest/middleware"
 	"go_trial/gorest/utils"
 	"log"
 	"net/http"
@@ -22,18 +21,25 @@ func main() {
 
 	// Get database collection
 	collection := utils.GetCollection(client, "apiDB", "logistics")
+	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
 
 	// Create an instance of your DB
-	db := &handlers.DB{Collection: collection}
+	db := &handlers.DB{
+		Collection:      collection,
+		TokenCollection: tokensCollection,
+	}
 	r := mux.NewRouter()
 
 	//Attach middleware to handle request validation
-
-	r.Use(middleware.ValidateRequestBody)
-
 	// Define routes
+	//r.Use(middleware.ValidateRequestBody)
 	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
+
+	//Not using middleware
 	r.HandleFunc("/token/login/", db.LoginTokenHandler).Methods("POST")
+
+	//r.Use(middleware.SetCurrentUserMiddleware)
+	r.HandleFunc("/api/users/me/", db.GetCurrentUserHandler).Methods("GET")
 
 	srv := &http.Server{
 		Handler:      r,

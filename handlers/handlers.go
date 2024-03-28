@@ -17,7 +17,8 @@ import (
 )
 
 type DB struct {
-	Collection *mongo.Collection
+	Collection      *mongo.Collection
+	TokenCollection *mongo.Collection
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -126,6 +127,14 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//Insert the username and JWT token into the tokensCollection
+
+	_, err = db.TokenCollection.InsertOne(ctx, bson.M{"username": username, "tokens": tokenString})
+	if err != nil {
+		http.Error(w, "Failed to oinsert token into the database", http.StatusInternalServerError)
+		return
+	}
+
 	// Token generated successfully, send it in the response
 	response := Response{Token: tokenString}
 	respJSON, err := json.Marshal(response)
@@ -137,4 +146,28 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respJSON)
+}
+
+func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve username from context
+	username := r.Context().Value("username").(string)
+
+	// Query database for user details
+	var user models.SingleUser
+	err := db.Collection.FindOne(context.TODO(), bson.M{"username": username}).Decode(&user)
+	if err != nil {
+		// Handle errors (e.g., user not found)
+		if err == mongo.ErrNoDocuments {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("User not found"))
+			return
+		}
+		http.Error(w, "Error fetching user details", http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with user details
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
 }
