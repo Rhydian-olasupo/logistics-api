@@ -15,8 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-//ValidateRequestBody is a middleware function to validate request Body
-
+// ValidateRequestBody is a middleware function to validate request Body
 func ValidateRequestBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Ensure that the request method is POST
