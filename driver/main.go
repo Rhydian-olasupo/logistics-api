@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"go_trial/gorest/middleware"
+
 	"github.com/gorilla/mux"
 )
 
@@ -28,21 +30,38 @@ func main() {
 		Collection:      collection,
 		TokenCollection: tokensCollection,
 	}
-	r := mux.NewRouter()
+	mainRouter := mux.NewRouter()
+
+	//Define routes that require RequestBody validation
+	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
+	validationRouter.Use(middleware.ValidateRequestBody)
+	validationRouter.HandleFunc("/users", db.CreateUserhandler).Methods("POST")
+
+	// Define routes that don't use any middleware
+	noMiddlewareRouter := mainRouter.PathPrefix("/token").Subrouter()
+	noMiddlewareRouter.HandleFunc("/login/", db.LoginTokenHandler).Methods("POST")
+
+	// Define routes that require current user middleware
+	currentUserRouter := mainRouter.PathPrefix("/api").Subrouter()
+	currentUserRouter.Use(middleware.SetCurrentUserMiddleware)
+	currentUserRouter.HandleFunc("/users/me/", db.GetCurrentUserHandler).Methods("GET")
+
+	// Serve the main router
+	http.Handle("/", mainRouter)
 
 	//Attach middleware to handle request validation
 	// Define routes
 	//r.Use(middleware.ValidateRequestBody)
-	r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
+	//r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
 
 	//Not using middleware
-	r.HandleFunc("/token/login/", db.LoginTokenHandler).Methods("POST")
+	//r.HandleFunc("/token/login/", db.LoginTokenHandler).Methods("POST")
 
 	//r.Use(middleware.SetCurrentUserMiddleware)
-	r.HandleFunc("/api/users/me/", db.GetCurrentUserHandler).Methods("GET")
+	//r.HandleFunc("/api/users/me/", db.GetCurrentUserHandler).Methods("GET")
 
 	srv := &http.Server{
-		Handler:      r,
+		Handler:      mainRouter,
 		Addr:         "127.0.0.1:8000",
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
