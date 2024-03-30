@@ -8,11 +8,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"go_trial/gorest/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // ValidateRequestBody is a middleware function to validate request Body
@@ -168,12 +170,16 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		fmt.Println(name)
+
 		userToken, err := findTokenByUsername(name)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error finding user token: " + err.Error()))
 			return
 		}
+		fmt.Println("usertoken:", userToken)
+		fmt.Println("tokenstring:", tokenString)
 
 		if userToken != tokenString {
 			w.WriteHeader(http.StatusForbidden)
@@ -181,7 +187,6 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			return
 
 		}
-
 		next.ServeHTTP(w, r)
 
 	})
@@ -189,28 +194,32 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 
 // Function to query MongoDb collection to find user's token by username
 func findTokenByUsername(username string) (string, error) {
-	// Initialize MongoDB client
+	// Establish MongoDB connection with context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
+	defer cancel()
+
 	client, err := utils.InitMongoClient()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
 	}
-	defer client.Disconnect(context.TODO())
+	defer client.Disconnect(ctx)
 
-	// Get reference to the tokens collection
+	// Get collection reference
 	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
 
-	// Define context
-	ctx := context.TODO()
-
+	// Query and decode result
 	var result struct {
-		Token string `json:"token" bson:"token"`
+		Token string `json:"tokens" bson:"tokens"`
 	}
-
-	// Query the tokens collection
 	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
 	if err != nil {
-		return "", err
+		if err == mongo.ErrNoDocuments {
+			return "", fmt.Errorf("token not found for username: %s", username)
+		}
+		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
 	}
+
+	fmt.Println(result.Token)
 
 	return result.Token, nil
 }

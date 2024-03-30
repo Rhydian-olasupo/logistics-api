@@ -24,11 +24,15 @@ func main() {
 	// Get database collection
 	collection := utils.GetCollection(client, "apiDB", "logistics")
 	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+	menuitemscollection := utils.GetCollection(client, "apiDB", "menuitems")
+	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
-		Collection:      collection,
-		TokenCollection: tokensCollection,
+		Collection:         collection,
+		TokenCollection:    tokensCollection,
+		MenuItemCollection: menuitemscollection,
+		UserGroup:          UserGroupcollection,
 	}
 	mainRouter := mux.NewRouter()
 
@@ -46,6 +50,11 @@ func main() {
 	currentUserRouter.Use(middleware.SetCurrentUserMiddleware)
 	currentUserRouter.HandleFunc("/users/me/", db.GetCurrentUserHandler).Methods("GET")
 
+	//Define routes that require jwttoken validation middleware
+	userRouter := mainRouter.PathPrefix("/api").Subrouter()
+	userRouter.Use(middleware.JWTTokenValidationMiddleware)
+	userRouter.HandleFunc("/assign-group", db.AssignGroupHandler).Methods("POST")
+	userRouter.HandleFunc("/menu-items", db.PostMenuItems).Methods("POST", "PUT", "PATCH", "DELETE")
 	// Serve the main router
 	http.Handle("/", mainRouter)
 

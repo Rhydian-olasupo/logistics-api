@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -17,8 +18,10 @@ import (
 )
 
 type DB struct {
-	Collection      *mongo.Collection
-	TokenCollection *mongo.Collection
+	Collection         *mongo.Collection
+	TokenCollection    *mongo.Collection
+	MenuItemCollection *mongo.Collection
+	UserGroup          *mongo.Collection
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -171,4 +174,45 @@ func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
+}
+
+func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
+	var menuitem models.MenuItem
+	postBody, _ := io.ReadAll(r.Body)
+	json.Unmarshal(postBody, &menuitem)
+	result, err := db.MenuItemCollection.InsertOne(context.TODO(), menuitem)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		reponse, _ := json.Marshal(result)
+		w.WriteHeader(http.StatusOK)
+		w.Write(reponse)
+	}
+}
+
+// Handler for assigning users to groups
+func (db *DB) AssignGroupHandler(w http.ResponseWriter, r *http.Request) {
+	// Decode JSON request body
+	var req struct {
+		Name  string `json:"name" bson:"name"`
+		Group string `json:"group" bson:"group"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Update user's group in the database
+	_, err := db.UserGroup.InsertOne(context.TODO(), bson.M{"name": req.Name, "group": req.Group})
+	if err != nil {
+		http.Error(w, "Failed to assign group to user", http.StatusInternalServerError)
+		log.Printf("Failed to assign group to user: %v", err)
+		return
+	}
+
+	// Respond with success message
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "User assigned to group successfully"})
 }
