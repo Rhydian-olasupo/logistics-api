@@ -170,16 +170,12 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		fmt.Println(name)
-
 		userToken, err := findTokenByUsername(name)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error finding user token: " + err.Error()))
 			return
 		}
-		fmt.Println("usertoken:", userToken)
-		fmt.Println("tokenstring:", tokenString)
 
 		if userToken != tokenString {
 			w.WriteHeader(http.StatusForbidden)

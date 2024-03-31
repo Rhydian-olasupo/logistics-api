@@ -54,20 +54,10 @@ func main() {
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()
 	userRouter.Use(middleware.JWTTokenValidationMiddleware)
 	userRouter.HandleFunc("/assign-group", db.AssignGroupHandler).Methods("POST")
+	userRouter.HandleFunc("/groups/manager/users", db.ManageMangersHandler).Methods("GET", "POST")
 	userRouter.HandleFunc("/menu-items", db.PostMenuItems).Methods("POST", "PUT", "PATCH", "DELETE")
 	// Serve the main router
 	http.Handle("/", mainRouter)
-
-	//Attach middleware to handle request validation
-	// Define routes
-	//r.Use(middleware.ValidateRequestBody)
-	//r.HandleFunc("/api/users", db.CreateUserhandler).Methods("POST")
-
-	//Not using middleware
-	//r.HandleFunc("/token/login/", db.LoginTokenHandler).Methods("POST")
-
-	//r.Use(middleware.SetCurrentUserMiddleware)
-	//r.HandleFunc("/api/users/me/", db.GetCurrentUserHandler).Methods("GET")
 
 	srv := &http.Server{
 		Handler:      mainRouter,

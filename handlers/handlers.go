@@ -216,3 +216,93 @@ func (db *DB) AssignGroupHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "User assigned to group successfully"})
 }
+
+func (db *DB) ManageMangersHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		//Get request from all Managers
+		db.GetAllManagersHandler(w, r)
+	case http.MethodPost:
+		db.assignUserToManagerHandler(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
+	// Define a slice to store multiple managers
+	var managers []struct {
+		Name  string `json:"name" bson:"name"`
+		Group string `json:"group" bson:"group"`
+	}
+
+	// Find all documents where group is "Manager"
+	cursor, err := db.UserGroup.Find(context.TODO(), bson.M{"group": "Manager"})
+	if err != nil {
+		http.Error(w, "Failed to fetch managers", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	// Iterate over the cursor and decode each document
+	for cursor.Next(context.TODO()) {
+		var manager struct {
+			Name  string `json:"name" bson:"name"`
+			Group string `json:"group" bson:"group"`
+		}
+		if err := cursor.Decode(&manager); err != nil {
+			http.Error(w, "Failed to decode manager", http.StatusInternalServerError)
+			return
+		}
+		managers = append(managers, manager)
+	}
+	if err := cursor.Err(); err != nil {
+		http.Error(w, "Error while iterating over managers", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode the result as JSON and write to response
+	jsonBytes, err := json.Marshal(managers)
+	if err != nil {
+		http.Error(w, "Failed to encode managers to JSON", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonBytes)
+}
+
+func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Please pass the data in a form format", http.StatusBadRequest)
+	}
+
+	username := r.PostForm.Get("username")
+	if username == "" {
+		http.Error(w, "Username is required", http.StatusBadRequest)
+	}
+
+	//Check if the User already exist in the Manager group
+
+	var existingUser struct {
+		Name  string `json:"name" bson:"name"`
+		Group string `json:"group" bson:"group"`
+	}
+
+	err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser)
+	if err == nil {
+		http.Error(w, "User already exists as a manager", http.StatusBadRequest)
+
+	}
+
+	_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
+	if err != nil {
+		http.Error(w, "Failed to assign user to manager", http.StatusInternalServerError)
+		log.Printf("Failed to assign user to manager: %v", err)
+		return
+	}
+
+	// Send a success response
+	w.WriteHeader(http.StatusCreated)
+
+}
