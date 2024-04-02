@@ -13,7 +13,9 @@ import (
 	"go_trial/gorest/models"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -391,4 +393,30 @@ func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Req
 
 	// Send a success reponse
 	w.WriteHeader(http.StatusCreated)
+}
+
+// Delete the user from the Group they belong
+func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	group := "Manager"
+	var data struct {
+		Group string `json:"group" bson:"group"`
+	}
+	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+	if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
+		http.Error(w, "User ID not Found", http.StatusBadRequest)
+		return
+	} else {
+		if data.Group != group {
+			http.Error(w, "Cant Delete User as it does not belong in the Manger Group", http.StatusBadRequest)
+			return
+		} else {
+			filter := bson.M{"_id": objectID}
+			_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
+			if err != nil {
+				log.Println("Cant delte database record")
+			}
+		}
+	}
+
 }
