@@ -229,6 +229,18 @@ func (db *DB) ManageMangersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (db *DB) ManageDeliveryHanlder(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		//Get request from all delivery crew
+		db.GetAllDeliveryCrewHandler(w, r)
+	case http.MethodPost:
+		db.assignUsertoDeliveryCrewHandler(w, r)
+	default:
+		http.Error(w, "Method nt allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (db *DB) GetAllDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
 	//Define a slice to store all delivery crew
 	var DeliveryCrews []struct {
@@ -349,5 +361,37 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 
 	// Send a success response
 	w.WriteHeader(http.StatusCreated)
+}
 
+func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Please pass the data in a form format", http.StatusInternalServerError)
+		return
+	}
+
+	username := r.PostForm.Get("username")
+	if username == "" {
+		http.Error(w, "Username is required", http.StatusInternalServerError)
+	}
+
+	var existingUser struct {
+		Name  string `json:"name" bson:"name"`
+		Group string `json:"group" bson:"group"`
+	}
+
+	if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
+		http.Error(w, "User already exists as a delivery crew", http.StatusBadRequest)
+		return
+	} else {
+		_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Delivery Crew"})
+		if err != nil {
+			http.Error(w, "Failed to assign to Delivery Crew", http.StatusBadRequest)
+			log.Printf("Failed to assign to Delivery Crew: %v", err)
+			return
+		}
+	}
+
+	// Send a success reponse
+	w.WriteHeader(http.StatusCreated)
 }
