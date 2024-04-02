@@ -345,20 +345,17 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 		Name  string `json:"name" bson:"name"`
 		Group string `json:"group" bson:"group"`
 	}
-
-	err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser)
-	if err == nil {
+	if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
 		http.Error(w, "User already exists as a manager", http.StatusBadRequest)
-
-	}
-
-	_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
-	if err != nil {
-		http.Error(w, "Failed to assign user to manager", http.StatusInternalServerError)
-		log.Printf("Failed to assign user to manager: %v", err)
 		return
+	} else {
+		_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
+		if err != nil {
+			http.Error(w, "Failed to assign user to manager", http.StatusInternalServerError)
+			log.Printf("Failed to assign user to manager: %v", err)
+			return
+		}
 	}
-
 	// Send a success response
 	w.WriteHeader(http.StatusCreated)
 }
