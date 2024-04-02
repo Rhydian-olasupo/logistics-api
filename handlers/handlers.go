@@ -229,6 +229,51 @@ func (db *DB) ManageMangersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (db *DB) GetAllDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
+	//Define a slice to store all delivery crew
+	var DeliveryCrews []struct {
+		Name  string `json:"name" bson:"name"`
+		Group string `json:"group" bson:"group"`
+	}
+
+	//Find all documents where group is "Delivery Crew"
+	cursor, err := db.UserGroup.Find(context.TODO(), bson.M{"group": "Delivery Crew"})
+	if err != nil {
+		http.Error(w, "Failed to fetch Delivery Crews", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	//Iterate over the cursor and decode each document
+	for cursor.Next(context.TODO()) {
+		var delivery_crew struct {
+			Name  string `json:"name" bson:"name"`
+			Group string `json:"group" bson:"group"`
+		}
+
+		if err := cursor.Decode(&delivery_crew); err != nil {
+			http.Error(w, "Fialed to decode delivery crew", http.StatusInternalServerError)
+			return
+		}
+
+		DeliveryCrews = append(DeliveryCrews, delivery_crew)
+	}
+
+	if err := cursor.Err(); err != nil {
+		http.Error(w, "Erroe while iterating over Delivery Crews", http.StatusInternalServerError)
+		return
+	}
+
+	//Encode the resutl as JSON and write to response
+	jsonBytes, err := json.Marshal(DeliveryCrews)
+	if err != nil {
+		http.Error(w, " Failed to encode Delivery Crew to JSON", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonBytes)
+}
+
 func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
 	// Define a slice to store multiple managers
 	var managers []struct {

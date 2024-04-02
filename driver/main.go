@@ -55,6 +55,7 @@ func main() {
 	userRouter.Use(middleware.JWTTokenValidationMiddleware)
 	userRouter.HandleFunc("/assign-group", db.AssignGroupHandler).Methods("POST")
 	userRouter.HandleFunc("/groups/manager/users", db.ManageMangersHandler).Methods("GET", "POST")
+	userRouter.HandleFunc("/groups/delivery-crew/users", db.GetAllDeliveryCrewHandler).Methods("GET", "POST")
 	userRouter.HandleFunc("/menu-items", db.PostMenuItems).Methods("POST", "PUT", "PATCH", "DELETE")
 	// Serve the main router
 	http.Handle("/", mainRouter)
