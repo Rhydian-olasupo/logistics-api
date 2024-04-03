@@ -524,6 +524,16 @@ func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
 
 // GET request handler to retrieve all menu items with category information
 func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
+	// Default pagination parameters
+	defaultPageSize := 5
+	defaultPage := 1
+
+	//Calculate pagination paramters
+	pageSize := defaultPageSize
+	page := defaultPage
+
+	//Calculate skip count
+	skip := (page - 1) * pageSize
 	type MenuItemWithCategory struct {
 		models.MenuItem `bson:",inline"`
 		Category        models.Category `json:"category" bson:"category"`
@@ -547,6 +557,9 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 		bson.D{
 			{Key: "$unwind", Value: "$category"},
 		},
+		//Pagination: Skip records and limit number of records
+		bson.D{{Key: "$skip", Value: skip}},
+		bson.D{{Key: "$limit", Value: pageSize}},
 	})
 	if err != nil {
 		http.Error(w, "Failed to retrieve menu items", http.StatusInternalServerError)
