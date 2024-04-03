@@ -436,37 +436,6 @@ func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from delivery group successfully"})
 }
 
-/*func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		db.GetMenuItems(w, r)
-	case http.MethodPost:
-		db.PostMenuItems(w, r)
-	case http.MethodPut:
-		db.PutMenuItems(w, r)
-	case http.MethodPatch:
-		db.PatchMenuItems(w, r)
-	case http.MethodDelete:
-		db.DeleteMenuItems(w, r)
-	}
-}*/
-
-func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
-	var menuitem models.MenuItem
-	postBody, _ := io.ReadAll(r.Body)
-	json.Unmarshal(postBody, &menuitem)
-	result, err := db.MenuItemCollection.InsertOne(context.TODO(), menuitem)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		reponse, _ := json.Marshal(result)
-		w.WriteHeader(http.StatusOK)
-		w.Write(reponse)
-	}
-}
-
 func (db *DB) PostItemCategory(w http.ResponseWriter, r *http.Request) {
 	var category models.Category
 	postBody, _ := io.ReadAll(r.Body)
@@ -516,5 +485,84 @@ func (db *DB) GetAllItemCategories(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonBytes)
+}
 
+/*func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		db.GetMenuItems(w, r)
+	case http.MethodPost:
+		db.PostMenuItems(w, r)
+	case http.MethodPut:
+		db.PutMenuItems(w, r)
+	case http.MethodPatch:
+		db.PatchMenuItems(w, r)
+	case http.MethodDelete:
+		db.DeleteMenuItems(w, r)
+	}
+}*/
+
+func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
+	var menuitem models.MenuItem
+	postBody, _ := io.ReadAll(r.Body)
+	var categoryID primitive.ObjectID
+	menuitem.Category = categoryID
+	json.Unmarshal(postBody, &menuitem)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := db.MenuItemCollection.InsertOne(ctx, menuitem)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		reponse, _ := json.Marshal(result)
+		w.WriteHeader(http.StatusOK)
+		w.Write(reponse)
+	}
+}
+
+// GET request handler to retrieve all menu items with category information
+func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
+	type MenuItemWithCategory struct {
+		models.MenuItem `bson:",inline"`
+		Category        models.Category `json:"category" bson:"category"`
+	}
+
+	menuItemsWithCategory := []MenuItemWithCategory{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Perform a lookup or join operation to fetch category information for each menu item
+	cursor, err := db.MenuItemCollection.Aggregate(ctx, mongo.Pipeline{
+		bson.D{
+			{Key: "$lookup", Value: bson.D{
+				{Key: "from", Value: "Category"},       // Name of the category collection
+				{Key: "localField", Value: "category"}, // Field in the local collection to match
+				{Key: "foreignField", Value: "_id"},    // Field in the foreign collection to match
+				{Key: "as", Value: "category"},         // Alias for the joined field in the output documents
+			}},
+		},
+		bson.D{
+			{Key: "$unwind", Value: "$category"},
+		},
+	})
+	if err != nil {
+		http.Error(w, "Failed to retrieve menu items", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var menuItemWithCategory MenuItemWithCategory
+		if err := cursor.Decode(&menuItemWithCategory); err != nil {
+			http.Error(w, "Failed to decode menu items", http.StatusInternalServerError)
+			return
+		}
+		menuItemsWithCategory = append(menuItemsWithCategory, menuItemWithCategory)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(menuItemsWithCategory)
 }

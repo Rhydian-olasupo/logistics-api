@@ -63,6 +63,7 @@ func main() {
 	userRouter.HandleFunc("/groups/manager/users/{id:[a-zA-Z0-9]*}", db.DeleteManagerHandler).Methods("DELETE")
 	userRouter.HandleFunc("/groups/delivery-crew/users/{id:[a-zA-Z0-9]*}", db.DeleteDeliveryHandler).Methods("DELETE")
 	userRouter.HandleFunc("/menu-items", db.PostMenuItems).Methods("POST", "PUT", "PATCH", "DELETE")
+	userRouter.HandleFunc("/menu-items", db.GetMenuItems).Methods("GET")
 	// Serve the main router
 	http.Handle("/", mainRouter)
 
