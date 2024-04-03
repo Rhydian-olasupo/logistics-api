@@ -482,3 +482,39 @@ func (db *DB) PostItemCategory(w http.ResponseWriter, r *http.Request) {
 		w.Write(response)
 	}
 }
+
+func (db *DB) GetAllItemCategories(w http.ResponseWriter, r *http.Request) {
+	var categories []models.Category
+
+	// Find all documents where group is "Manager"
+	cursor, err := db.CategoryCollection.Find(context.TODO(), bson.M{})
+	if err != nil {
+		http.Error(w, "Failed to fetch categories", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	// Iterate over the cursor and decode each document
+	for cursor.Next(context.TODO()) {
+		var category models.Category
+		if err := cursor.Decode(&category); err != nil {
+			http.Error(w, "Failed to decode category", http.StatusInternalServerError)
+			return
+		}
+		categories = append(categories, category)
+	}
+	if err := cursor.Err(); err != nil {
+		http.Error(w, "Error while iterating over categories", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode the result as JSON and write to response
+	jsonBytes, err := json.Marshal(categories)
+	if err != nil {
+		http.Error(w, "Failed to encode managers to JSON", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonBytes)
+
+}

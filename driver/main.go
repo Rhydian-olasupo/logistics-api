@@ -57,6 +57,7 @@ func main() {
 	userRouter.Use(middleware.JWTTokenValidationMiddleware)
 	userRouter.HandleFunc("/assign-group", db.AssignGroupHandler).Methods("POST")
 	userRouter.HandleFunc("/assign-category", db.PostItemCategory).Methods("POST")
+	userRouter.HandleFunc("/categories", db.GetAllItemCategories).Methods("GET")
 	userRouter.HandleFunc("/groups/manager/users", db.ManageMangersHandler).Methods("GET", "POST")
 	userRouter.HandleFunc("/groups/delivery-crew/users", db.ManageDeliveryHanlder).Methods("GET", "POST")
 	userRouter.HandleFunc("/groups/manager/users/{id:[a-zA-Z0-9]*}", db.DeleteManagerHandler).Methods("DELETE")
