@@ -22,7 +22,6 @@ type SingleUser struct {
 
 type Category struct {
 	ID    primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	Slug  string             `json:"slug" bson:"slug"`
 	Title string             `json:"title" bson:"title"`
 }
 

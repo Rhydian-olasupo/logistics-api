@@ -24,6 +24,7 @@ type DB struct {
 	TokenCollection    *mongo.Collection
 	MenuItemCollection *mongo.Collection
 	UserGroup          *mongo.Collection
+	CategoryCollection *mongo.Collection
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -176,22 +177,6 @@ func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
-}
-
-func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
-	var menuitem models.MenuItem
-	postBody, _ := io.ReadAll(r.Body)
-	json.Unmarshal(postBody, &menuitem)
-	result, err := db.MenuItemCollection.InsertOne(context.TODO(), menuitem)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		reponse, _ := json.Marshal(result)
-		w.WriteHeader(http.StatusOK)
-		w.Write(reponse)
-	}
 }
 
 // Handler for assigning users to groups
@@ -449,4 +434,51 @@ func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from delivery group successfully"})
+}
+
+/*func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		db.GetMenuItems(w, r)
+	case http.MethodPost:
+		db.PostMenuItems(w, r)
+	case http.MethodPut:
+		db.PutMenuItems(w, r)
+	case http.MethodPatch:
+		db.PatchMenuItems(w, r)
+	case http.MethodDelete:
+		db.DeleteMenuItems(w, r)
+	}
+}*/
+
+func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
+	var menuitem models.MenuItem
+	postBody, _ := io.ReadAll(r.Body)
+	json.Unmarshal(postBody, &menuitem)
+	result, err := db.MenuItemCollection.InsertOne(context.TODO(), menuitem)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		reponse, _ := json.Marshal(result)
+		w.WriteHeader(http.StatusOK)
+		w.Write(reponse)
+	}
+}
+
+func (db *DB) PostItemCategory(w http.ResponseWriter, r *http.Request) {
+	var category models.Category
+	postBody, _ := io.ReadAll(r.Body)
+	json.Unmarshal(postBody, &category)
+	result, err := db.CategoryCollection.InsertOne(context.TODO(), category)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		response, _ := json.Marshal(result)
+		w.WriteHeader(http.StatusOK)
+		w.Write(response)
+	}
 }

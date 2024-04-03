@@ -26,6 +26,7 @@ func main() {
 	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
 	menuitemscollection := utils.GetCollection(client, "apiDB", "menuitems")
 	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
+	categoryCollection := utils.GetCollection(client, "apiDB", "Category")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
@@ -33,6 +34,7 @@ func main() {
 		TokenCollection:    tokensCollection,
 		MenuItemCollection: menuitemscollection,
 		UserGroup:          UserGroupcollection,
+		CategoryCollection: categoryCollection,
 	}
 	mainRouter := mux.NewRouter()
 
@@ -54,6 +56,7 @@ func main() {
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()
 	userRouter.Use(middleware.JWTTokenValidationMiddleware)
 	userRouter.HandleFunc("/assign-group", db.AssignGroupHandler).Methods("POST")
+	userRouter.HandleFunc("/assign-category", db.PostItemCategory).Methods("POST")
 	userRouter.HandleFunc("/groups/manager/users", db.ManageMangersHandler).Methods("GET", "POST")
 	userRouter.HandleFunc("/groups/delivery-crew/users", db.ManageDeliveryHanlder).Methods("GET", "POST")
 	userRouter.HandleFunc("/groups/manager/users/{id:[a-zA-Z0-9]*}", db.DeleteManagerHandler).Methods("DELETE")
