@@ -419,4 +419,34 @@ func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from Manager group successfully"})
+
+}
+
+func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	group := "Delivery Crew"
+	var data struct {
+		Group string `json:"group" bson:"group"`
+	}
+	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+	if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
+		http.Error(w, "User ID not Found", http.StatusBadRequest)
+		return
+	} else {
+		if data.Group != group {
+			http.Error(w, "Cant Delete User as it does not belong in the Delivery Group", http.StatusBadRequest)
+			return
+		} else {
+			filter := bson.M{"_id": objectID}
+			_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
+			if err != nil {
+				log.Println("Cant delte database record")
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from delivery group successfully"})
 }
