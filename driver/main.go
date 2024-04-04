@@ -37,7 +37,6 @@ func main() {
 		CategoryCollection: categoryCollection,
 	}
 	mainRouter := mux.NewRouter()
-
 	//Define routes that require RequestBody validation
 	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
 	validationRouter.Use(middleware.ValidateRequestBody)
@@ -62,7 +61,7 @@ func main() {
 	userRouter.HandleFunc("/groups/delivery-crew/users", db.ManageDeliveryHanlder).Methods("GET", "POST")
 	userRouter.HandleFunc("/groups/manager/users/{id:[a-zA-Z0-9]*}", db.DeleteManagerHandler).Methods("DELETE")
 	userRouter.HandleFunc("/groups/delivery-crew/users/{id:[a-zA-Z0-9]*}", db.DeleteDeliveryHandler).Methods("DELETE")
-	userRouter.HandleFunc("/menu-items", db.PostMenuItems).Methods("POST", "PUT", "PATCH", "DELETE")
+	userRouter.Handle("/menu-items", middleware.Authorize(http.HandlerFunc(db.PostMenuItems), "Manager", "Delivery Crew", "Customer")).Methods("POST", "PUT", "PATCH", "DELETE")
 	userRouter.HandleFunc("/menu-items", db.GetMenuItems).Methods("GET")
 	userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.DeleteMenuItems).Methods("DELETE")
 	// Serve the main router

@@ -503,22 +503,29 @@ func (db *DB) GetAllItemCategories(w http.ResponseWriter, r *http.Request) {
 }*/
 
 func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
-	var menuitem models.MenuItem
-	postBody, _ := io.ReadAll(r.Body)
-	var categoryID primitive.ObjectID
-	menuitem.Category = categoryID
-	json.Unmarshal(postBody, &menuitem)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	result, err := db.MenuItemCollection.InsertOne(ctx, menuitem)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		reponse, _ := json.Marshal(result)
-		w.WriteHeader(http.StatusOK)
-		w.Write(reponse)
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		var menuitem models.MenuItem
+		postBody, _ := io.ReadAll(r.Body)
+		var categoryID primitive.ObjectID
+		menuitem.Category = categoryID
+		json.Unmarshal(postBody, &menuitem)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		result, err := db.MenuItemCollection.InsertOne(ctx, menuitem)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			reponse, _ := json.Marshal(result)
+			w.WriteHeader(http.StatusOK)
+			w.Write(reponse)
+		}
+	default:
+		http.Error(w, "Unathorized", http.StatusUnauthorized)
 	}
 }
 
