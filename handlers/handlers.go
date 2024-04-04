@@ -579,3 +579,15 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(menuItemsWithCategory)
 }
+
+//Function to delete menu items from the menu collection
+
+func (db *DB) DeleteMenuItems(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+	filter := bson.M{"_id": objectID}
+	_, err := db.MenuItemCollection.DeleteOne(context.TODO(), filter)
+	if err != nil {
+		http.Error(w, "Cannot delete database record", http.StatusBadRequest)
+	}
+}
