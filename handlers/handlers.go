@@ -316,124 +316,145 @@ func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Please pass the data in a form format", http.StatusBadRequest)
-	}
-
-	username := r.PostForm.Get("username")
-	if username == "" {
-		http.Error(w, "Username is required", http.StatusBadRequest)
-	}
-
-	//Check if the User already exist in the Manager group
-
-	var existingUser struct {
-		Name  string `json:"name" bson:"name"`
-		Group string `json:"group" bson:"group"`
-	}
-	if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
-		http.Error(w, "User already exists as a manager", http.StatusBadRequest)
-		return
-	} else {
-		_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		err := r.ParseForm()
 		if err != nil {
-			http.Error(w, "Failed to assign user to manager", http.StatusInternalServerError)
-			log.Printf("Failed to assign user to manager: %v", err)
+			http.Error(w, "Please pass the data in a form format", http.StatusInternalServerError)
 			return
 		}
+		username := r.PostForm.Get("username")
+		if username == "" {
+			http.Error(w, "Username is required", http.StatusInternalServerError)
+		}
+		var existingUser struct {
+			Name  string `json:"name" bson:"name"`
+			Group string `json:"group" bson:"group"`
+		}
+		if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
+			http.Error(w, "User already exists as a delivery crew", http.StatusBadRequest)
+			return
+		} else {
+			_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
+			if err != nil {
+				http.Error(w, "Failed to assign to Delivery Crew", http.StatusBadRequest)
+				log.Printf("Failed to assign to Delivery Crew: %v", err)
+				return
+			}
+		}
+		// Send a success reponse
+		w.WriteHeader(http.StatusCreated)
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	}
-	// Send a success response
-	w.WriteHeader(http.StatusCreated)
 }
 
 func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Please pass the data in a form format", http.StatusInternalServerError)
-		return
-	}
-
-	username := r.PostForm.Get("username")
-	if username == "" {
-		http.Error(w, "Username is required", http.StatusInternalServerError)
-	}
-
-	var existingUser struct {
-		Name  string `json:"name" bson:"name"`
-		Group string `json:"group" bson:"group"`
-	}
-
-	if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
-		http.Error(w, "User already exists as a delivery crew", http.StatusBadRequest)
-		return
-	} else {
-		_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Delivery Crew"})
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		err := r.ParseForm()
 		if err != nil {
-			http.Error(w, "Failed to assign to Delivery Crew", http.StatusBadRequest)
-			log.Printf("Failed to assign to Delivery Crew: %v", err)
+			http.Error(w, "Please pass the data in a form format", http.StatusInternalServerError)
 			return
 		}
+		username := r.PostForm.Get("username")
+		if username == "" {
+			http.Error(w, "Username is required", http.StatusInternalServerError)
+		}
+		var existingUser struct {
+			Name  string `json:"name" bson:"name"`
+			Group string `json:"group" bson:"group"`
+		}
+		if err = db.UserGroup.FindOne(context.Background(), bson.M{"name": username}).Decode(&existingUser); err == nil {
+			http.Error(w, "User already exists as a delivery crew", http.StatusBadRequest)
+			return
+		} else {
+			_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Delivery Crew"})
+			if err != nil {
+				http.Error(w, "Failed to assign to Delivery Crew", http.StatusBadRequest)
+				log.Printf("Failed to assign to Delivery Crew: %v", err)
+				return
+			}
+		}
+		// Send a success reponse
+		w.WriteHeader(http.StatusCreated)
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	}
 
-	// Send a success reponse
-	w.WriteHeader(http.StatusCreated)
 }
 
 // Delete the user from the Group they belong
 func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	group := "Manager"
-	var data struct {
-		Group string `json:"group" bson:"group"`
-	}
-	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
-	if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
-		http.Error(w, "User ID not Found", http.StatusBadRequest)
-		return
-	} else {
-		if data.Group != group {
-			http.Error(w, "Cant Delete User as it does not belong in the Manger Group", http.StatusBadRequest)
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		vars := mux.Vars(r)
+		group := "Manager"
+		var data struct {
+			Group string `json:"group" bson:"group"`
+		}
+		objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+		if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
+			http.Error(w, "User ID not Found", http.StatusNotFound)
 			return
 		} else {
-			filter := bson.M{"_id": objectID}
-			_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
-			if err != nil {
-				log.Println("Cant delte database record")
+			if data.Group != group {
+				http.Error(w, "Cant Delete User as it does not belong in the Delivery Group", http.StatusBadRequest)
+				return
+			} else {
+				filter := bson.M{"_id": objectID}
+				_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
+				if err != nil {
+					log.Println("Cant delte database record")
+				}
 			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from manager group successfully"})
 		}
-	}
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from Manager group successfully"})
+	}
 
 }
 
 func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	group := "Delivery Crew"
-	var data struct {
-		Group string `json:"group" bson:"group"`
-	}
-	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
-	if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
-		http.Error(w, "User ID not Found", http.StatusBadRequest)
-		return
-	} else {
-		if data.Group != group {
-			http.Error(w, "Cant Delete User as it does not belong in the Delivery Group", http.StatusBadRequest)
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		vars := mux.Vars(r)
+		group := "Delivery Crew"
+		var data struct {
+			Group string `json:"group" bson:"group"`
+		}
+		objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+		if err := db.UserGroup.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&data); err != nil {
+			http.Error(w, "User ID not Found", http.StatusNotFound)
 			return
 		} else {
-			filter := bson.M{"_id": objectID}
-			_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
-			if err != nil {
-				log.Println("Cant delte database record")
+			if data.Group != group {
+				http.Error(w, "Cant Delete User as it does not belong in the Delivery Group", http.StatusBadRequest)
+				return
+			} else {
+				filter := bson.M{"_id": objectID}
+				_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
+				if err != nil {
+					log.Println("Cant delte database record")
+				}
 			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from delivery group successfully"})
 		}
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "User deleted from delivery group successfully"})
 }
 
 func (db *DB) PostItemCategory(w http.ResponseWriter, r *http.Request) {
@@ -624,7 +645,7 @@ func (db *DB) PutSingleMenuItem(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
 	fmt.Println(userRole)
 	vars := mux.Vars(r)
-	id := vars["id"]
+	id, _ := primitive.ObjectIDFromHex(vars["id"])
 
 	switch userRole {
 	case "Manager":
@@ -653,7 +674,7 @@ func (db *DB) PatchMenuItems(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
 	fmt.Println(userRole)
 	vars := mux.Vars(r)
-	id := vars["id"]
+	id, _ := primitive.ObjectIDFromHex(vars["id"])
 	switch userRole {
 	case "Manager":
 		var updateData bson.M

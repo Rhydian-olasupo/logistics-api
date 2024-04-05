@@ -62,8 +62,9 @@ func main() {
 	userRouter.HandleFunc("/groups/manager/users/{id:[a-zA-Z0-9]*}", db.DeleteManagerHandler).Methods("DELETE")
 	userRouter.HandleFunc("/groups/delivery-crew/users/{id:[a-zA-Z0-9]*}", db.DeleteDeliveryHandler).Methods("DELETE")
 	userRouter.Handle("/menu-items", middleware.Authorize(http.HandlerFunc(db.ManageMenuHanlder), "Manager", "Delivery Crew", "Customer")).Methods("GET", "POST")
+	userRouter.Handle("/menu-items/{id:[a-zA-Z0-9]*}", middleware.Authorize(http.HandlerFunc(db.ManageSingleItemHandler), "Manager", "Delivery Crew", "Customer")).Methods("GET", "PUT", "PATCH", "DELETE")
 	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.DeleteSingleMenuItem).Methods("DELETE")
-	userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.GetSingleleMenuItem).Methods("GET")
+	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.GetSingleleMenuItem).Methods("GET")
 
 	// Serve the main router
 	http.Handle("/", mainRouter)
