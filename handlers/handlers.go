@@ -487,20 +487,14 @@ func (db *DB) GetAllItemCategories(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonBytes)
 }
 
-/*func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
+func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		db.GetMenuItems(w, r)
 	case http.MethodPost:
 		db.PostMenuItems(w, r)
-	case http.MethodPut:
-		db.PutMenuItems(w, r)
-	case http.MethodPatch:
-		db.PatchMenuItems(w, r)
-	case http.MethodDelete:
-		db.DeleteMenuItems(w, r)
 	}
-}*/
+}
 
 func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
@@ -525,7 +519,7 @@ func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
 			w.Write(reponse)
 		}
 	default:
-		http.Error(w, "Unathorized", http.StatusUnauthorized)
+		http.Error(w, "Unathorized....", http.StatusUnauthorized)
 	}
 }
 
@@ -587,14 +581,109 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(menuItemsWithCategory)
 }
 
-//Function to delete menu items from the menu collection
+// Function to delete menu items from the menu collection
+func (db *DB) DeleteSingleMenuItem(w http.ResponseWriter, r *http.Request) {
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	switch userRole {
+	case "Manager":
+		vars := mux.Vars(r)
+		objectID, _ := primitive.ObjectIDFromHex(vars["id"])
+		filter := bson.M{"_id": objectID}
+		_, err := db.MenuItemCollection.DeleteOne(context.TODO(), filter)
+		if err != nil {
+			http.Error(w, "Cannot delete database record", http.StatusBadRequest)
+		}
 
-func (db *DB) DeleteMenuItems(w http.ResponseWriter, r *http.Request) {
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}
+
+}
+
+func (db *DB) GetSingleleMenuItem(w http.ResponseWriter, r *http.Request) {
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	var singleItem models.MenuItem
 	vars := mux.Vars(r)
 	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
 	filter := bson.M{"_id": objectID}
-	_, err := db.MenuItemCollection.DeleteOne(context.TODO(), filter)
+	err := db.MenuItemCollection.FindOne(context.TODO(), filter).Decode(&singleItem)
 	if err != nil {
-		http.Error(w, "Cannot delete database record", http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		response, _ := json.Marshal(singleItem)
+		w.WriteHeader(http.StatusOK)
+		w.Write(response)
+	}
+}
+
+func (db *DB) PutSingleMenuItem(w http.ResponseWriter, r *http.Request) {
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	switch userRole {
+	case "Manager":
+		var menuItem models.MenuItem
+		if err := json.NewDecoder(r.Body).Decode(&menuItem); err != nil {
+			http.Error(w, "FAILURE TO DECODE JSON BDOY", http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := db.MenuItemCollection.ReplaceOne(ctx, bson.M{"_id": id}, menuItem)
+		if err != nil {
+			http.Error(w, "Failed to update menu item", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+
+	default:
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}
+
+}
+
+// PATCH request handler to partially update an existing menu item
+func (db *DB) PatchMenuItems(w http.ResponseWriter, r *http.Request) {
+	userRole := r.Context().Value("userRole").(string)
+	fmt.Println(userRole)
+	vars := mux.Vars(r)
+	id := vars["id"]
+	switch userRole {
+	case "Manager":
+		var updateData bson.M
+		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+			http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := db.MenuItemCollection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": updateData})
+		if err != nil {
+			http.Error(w, "Failed to update menu item", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	default:
+		http.Error(w, "Unauthrized", http.StatusUnauthorized)
+	}
+
+}
+
+func (db *DB) ManageSingleItemHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPut:
+		db.PutSingleMenuItem(w, r)
+	case http.MethodGet:
+		db.GetSingleleMenuItem(w, r)
+	case http.MethodDelete:
+		db.DeleteSingleMenuItem(w, r)
+	case http.MethodPatch:
+		db.PatchMenuItems(w, r)
 	}
 }
