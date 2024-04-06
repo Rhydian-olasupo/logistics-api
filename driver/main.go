@@ -27,6 +27,7 @@ func main() {
 	menuitemscollection := utils.GetCollection(client, "apiDB", "menuitems")
 	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
 	categoryCollection := utils.GetCollection(client, "apiDB", "Category")
+	cartcollection := utils.GetCollection(client, "apiDB", "Cart")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
@@ -35,6 +36,7 @@ func main() {
 		MenuItemCollection: menuitemscollection,
 		UserGroup:          UserGroupcollection,
 		CategoryCollection: categoryCollection,
+		CartCollection:     cartcollection,
 	}
 	mainRouter := mux.NewRouter()
 	//Define routes that require RequestBody validation

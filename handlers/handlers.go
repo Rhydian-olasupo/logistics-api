@@ -8,9 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"go_trial/gorest/models"
+	"go_trial/gorest/utils"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
@@ -25,6 +27,7 @@ type DB struct {
 	MenuItemCollection *mongo.Collection
 	UserGroup          *mongo.Collection
 	CategoryCollection *mongo.Collection
+	CartCollection     *mongo.Collection
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -707,4 +710,108 @@ func (db *DB) ManageSingleItemHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPatch:
 		db.PatchMenuItems(w, r)
 	}
+}
+
+// Cart Management endpoints
+func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
+	// Retrieve username from context
+	username, ok := r.Context().Value("username").(string)
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Please pass the data in URL form encoded", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form values
+	quantityStr := r.PostForm.Get("quantity")
+	unitPriceStr := r.PostForm.Get("unit_price")
+	menuItem := r.PostForm.Get("menuitem")
+
+	// Convert string values to appropriate types
+	quantity, err := strconv.ParseInt(quantityStr, 10, 16)
+	if err != nil {
+		http.Error(w, "Invalid quantity", http.StatusBadRequest)
+		return
+	}
+
+	unitPrice, err := strconv.ParseFloat(unitPriceStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid unit price", http.StatusBadRequest)
+		return
+	}
+
+	// Calculate the price
+	price := float64(quantity) * unitPrice
+
+	// Get the user ID from the username
+	userIDStr, err := getUserIDFromUsername(username)
+	if err != nil {
+		http.Error(w, "Failed to retrieve user ID", http.StatusInternalServerError)
+		return
+	}
+	// Convert the user ID string to primitive.ObjectID
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+
+	}
+
+	// Create a new Cart instance
+	cart := models.Cart{
+		User:      userID, // Use the user ID
+		MenuItem:  menuItem,
+		Quantity:  int16(quantity),
+		UnitPrice: unitPrice,
+		Price:     price,
+	}
+
+	// Insert the cart item into the database
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := db.CartCollection.InsertOne(ctx, cart)
+	if err != nil {
+		http.Error(w, "Failed to add menu item to cart", http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with the ID of the newly inserted cart item
+	json.NewEncoder(w).Encode(result.InsertedID)
+}
+
+func getUserIDFromUsername(username string) (string, error) {
+	// Establish MongoDB connection with context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
+	defer cancel()
+
+	client, err := utils.InitMongoClient()
+	if err != nil {
+		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
+	}
+	defer client.Disconnect(ctx)
+
+	// Get collection reference
+	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+
+	// Query and decode result
+	var result struct {
+		Token string `json:"tokens" bson:"tokens"`
+	}
+	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", fmt.Errorf("token not found for username: %s", username)
+		}
+		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
+	}
+
+	fmt.Println(result.Token)
+
+	return result.Token, nil
 }
