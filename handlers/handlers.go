@@ -729,8 +729,13 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 
 	// Extract form values
 	quantityStr := r.PostForm.Get("quantity")
-	unitPriceStr := r.PostForm.Get("unit_price")
 	menuItem := r.PostForm.Get("menuitem")
+
+	//Get unit price from title
+	unitprice, err := getUnitPriceFromTitle(menuItem)
+	if err != nil {
+		http.Error(w, "Cannot get unit price", http.StatusInternalServerError)
+	}
 
 	// Convert string values to appropriate types
 	quantity, err := strconv.ParseInt(quantityStr, 10, 16)
@@ -738,15 +743,8 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid quantity", http.StatusBadRequest)
 		return
 	}
-
-	unitPrice, err := strconv.ParseFloat(unitPriceStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid unit price", http.StatusBadRequest)
-		return
-	}
-
 	// Calculate the price
-	price := float64(quantity) * unitPrice
+	price := float64(quantity) * unitprice
 
 	// Get the user ID from the username
 	userIDStr, err := getUserIDFromUsername(username)
@@ -767,7 +765,7 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 		User:      userID, // Use the user ID
 		MenuItem:  menuItem,
 		Quantity:  int16(quantity),
-		UnitPrice: unitPrice,
+		UnitPrice: unitprice,
 		Price:     price,
 	}
 
@@ -797,13 +795,13 @@ func getUserIDFromUsername(username string) (string, error) {
 	defer client.Disconnect(ctx)
 
 	// Get collection reference
-	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+	IDCollection := utils.GetCollection(client, "apiDB", "logistics")
 
 	// Query and decode result
 	var result struct {
-		Token string `json:"tokens" bson:"tokens"`
+		ID primitive.ObjectID `json:"id" bson:"_id"`
 	}
-	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
+	err = IDCollection.FindOne(ctx, bson.M{"name": username}).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return "", fmt.Errorf("token not found for username: %s", username)
@@ -811,7 +809,32 @@ func getUserIDFromUsername(username string) (string, error) {
 		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
 	}
 
-	fmt.Println(result.Token)
+	fmt.Println(result.ID)
 
-	return result.Token, nil
+	return result.ID.String(), nil
+}
+
+func getUnitPriceFromTitle(menuTitle string) (float64, error) {
+	//Establish mongoDB connection with context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, _ := utils.InitMongoClient()
+
+	//Get MenuItem Collection reference
+	Pricecollection := utils.GetCollection(client, "apidb", "menuitems")
+
+	//Query and decode result
+
+	var price struct {
+		Price float64 `json:"price" bson:"price"`
+	}
+
+	err := Pricecollection.FindOne(ctx, bson.M{"price": menuTitle}).Decode(&price)
+	if err != nil {
+		log.Printf("Error finding price for menu item")
+	}
+
+	return price.Price, nil
+
 }
