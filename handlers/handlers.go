@@ -782,7 +782,7 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	// Respond with the ID of the newly inserted cart item
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully"})
+	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully /n"})
 	json.NewEncoder(w).Encode(result.InsertedID)
 }
 
@@ -841,4 +841,52 @@ func getUnitPriceFromTitle(menuTitle string) (float64, error) {
 
 	return price.Price, nil
 
+}
+
+func (db *DB) GetCartItemsForUser(w http.ResponseWriter, r *http.Request) {
+	username := r.Context().Value("username").(string)
+
+	userID, err := getUserIDFromUsername(username)
+	if err != nil {
+		log.Printf("Failed to get UserID from Username: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println(userID)
+	id, _ := primitive.ObjectIDFromHex(userID)
+
+	// Query Cart collection for given userID
+	cursor, err := db.CartCollection.Find(context.TODO(), bson.M{"user": id})
+	if err != nil {
+		log.Printf("Error querying cart items: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	var cartItems []models.Cart
+	for cursor.Next(context.TODO()) {
+		var cartItem models.Cart
+		if err := cursor.Decode(&cartItem); err != nil {
+			log.Printf("Failed to decode cart item: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		cartItems = append(cartItems, cartItem)
+	}
+	if err := cursor.Err(); err != nil {
+		log.Printf("Error while iterating over cart items: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode the result as JSON and write to response
+	jsonBytes, err := json.Marshal(cartItems)
+	if err != nil {
+		log.Printf("Failed to encode cart items to JSON: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonBytes)
 }
