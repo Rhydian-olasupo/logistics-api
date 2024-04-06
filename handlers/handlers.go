@@ -780,6 +780,9 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with the ID of the newly inserted cart item
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully"})
 	json.NewEncoder(w).Encode(result.InsertedID)
 }
 
@@ -804,14 +807,15 @@ func getUserIDFromUsername(username string) (string, error) {
 	err = IDCollection.FindOne(ctx, bson.M{"name": username}).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return "", fmt.Errorf("token not found for username: %s", username)
+			return "", fmt.Errorf("ID not found for username: %s", username)
 		}
-		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
+		return "", fmt.Errorf("error finding ID: %w", err) // Wrap errors for better handling
 	}
 
-	fmt.Println(result.ID)
+	// Convert ObjectID to hexadecimal string
+	userID := result.ID.Hex()
 
-	return result.ID.String(), nil
+	return userID, nil
 }
 
 func getUnitPriceFromTitle(menuTitle string) (float64, error) {
@@ -822,7 +826,7 @@ func getUnitPriceFromTitle(menuTitle string) (float64, error) {
 	client, _ := utils.InitMongoClient()
 
 	//Get MenuItem Collection reference
-	Pricecollection := utils.GetCollection(client, "apidb", "menuitems")
+	Pricecollection := utils.GetCollection(client, "apiDB", "menuitems")
 
 	//Query and decode result
 
@@ -830,7 +834,7 @@ func getUnitPriceFromTitle(menuTitle string) (float64, error) {
 		Price float64 `json:"price" bson:"price"`
 	}
 
-	err := Pricecollection.FindOne(ctx, bson.M{"price": menuTitle}).Decode(&price)
+	err := Pricecollection.FindOne(ctx, bson.M{"title": menuTitle}).Decode(&price)
 	if err != nil {
 		log.Printf("Error finding price for menu item")
 	}
