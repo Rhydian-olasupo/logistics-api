@@ -890,3 +890,37 @@ func (db *DB) GetCartItemsForUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonBytes)
 }
+
+// Function to delete menu items from the menu collection
+func (db *DB) DeleteMenuItemsFromCart(w http.ResponseWriter, r *http.Request) {
+	username := r.Context().Value("username").(string)
+
+	userID, err := getUserIDFromUsername(username)
+	if err != nil {
+		log.Printf("Failed to get UserID from Username: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println(userID)
+	id, _ := primitive.ObjectIDFromHex(userID)
+	filter := bson.M{"user": id}
+	_, err = db.CartCollection.DeleteMany(context.TODO(), filter)
+	if err != nil {
+		http.Error(w, "Cannot delete database record", http.StatusBadRequest)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item deleted from Cart successfully"})
+}
+
+func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		db.GetCartItemsForUser(w, r)
+	case http.MethodPost:
+		db.PostMenuItemstoCart(w, r)
+	case http.MethodDelete:
+		db.DeleteMenuItemsFromCart(w, r)
+	}
+}
