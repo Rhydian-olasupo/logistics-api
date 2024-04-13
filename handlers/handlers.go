@@ -927,7 +927,7 @@ func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func placeNewOrderHandler(db *DB) (w http.ResponseWriter, r *http.Request) {
+func (db *DB) placeNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from token or context
 	// Get current user ID from the JWT token
 	username := r.Context().Value("username").(string)
