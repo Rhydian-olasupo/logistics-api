@@ -927,13 +927,21 @@ func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (db *DB) placeNewOrderHandler(w http.ResponseWriter, r *http.Request) {
+func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from token or context
 	// Get current user ID from the JWT token
 	username := r.Context().Value("username").(string)
 	userIDstr, err := getUserIDFromUsername(username)
+	if err != nil {
+		http.Error(w, "Cant get UserID from Username", http.StatusBadRequest)
+		return
+	}
 	// Convert the user ID string to primitive.ObjectID
 	userID, err := primitive.ObjectIDFromHex(userIDstr)
+	if err != nil {
+		http.Error(w, "Cant convert UserID to primitive.ObjectID", http.StatusBadRequest)
+		return
+	}
 
 	// Retrieve current cart items from the cart endpoint
 	cartURL := "http://localhost:8000/api/cart/menu-items"
@@ -966,9 +974,10 @@ func (db *DB) placeNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create a new order
 	order := models.Order{
-		User:   userID,
-		Status: false, // Assuming the order is initially not completed
-		Date:   time.Now(),
+		User:         userID,
+		DeliveryCrew: primitive.Null{},
+		Status:       false, // Assuming the order is initially not completed
+		Date:         time.Now(),
 	}
 
 	// Calculate the total price of the order

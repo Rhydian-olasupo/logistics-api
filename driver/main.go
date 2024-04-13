@@ -28,15 +28,19 @@ func main() {
 	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
 	categoryCollection := utils.GetCollection(client, "apiDB", "Category")
 	cartcollection := utils.GetCollection(client, "apiDB", "Cart")
+	orderscollection := utils.GetCollection(client, "apiDB", "Orders")
+	orderitemcollection := utils.GetCollection(client, "apiDB", "OrderItem")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
-		Collection:         collection,
-		TokenCollection:    tokensCollection,
-		MenuItemCollection: menuitemscollection,
-		UserGroup:          UserGroupcollection,
-		CategoryCollection: categoryCollection,
-		CartCollection:     cartcollection,
+		Collection:          collection,
+		TokenCollection:     tokensCollection,
+		MenuItemCollection:  menuitemscollection,
+		UserGroup:           UserGroupcollection,
+		CategoryCollection:  categoryCollection,
+		CartCollection:      cartcollection,
+		OrdersCollection:    orderscollection,
+		OrderItemCollection: orderitemcollection,
 	}
 	mainRouter := mux.NewRouter()
 	//Define routes that require RequestBody validation
@@ -53,6 +57,7 @@ func main() {
 	currentUserRouter.Use(middleware.SetCurrentUserMiddleware)
 	currentUserRouter.HandleFunc("/users/me/", db.GetCurrentUserHandler).Methods("GET")
 	currentUserRouter.HandleFunc("/cart/menu-items", db.CartEndpoint).Methods("GET", "POST", "DELETE")
+	currentUserRouter.HandleFunc("/orders", db.PlaceNewOrderHandler).Methods("POST")
 
 	//Define routes that require jwttoken validation middleware
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()

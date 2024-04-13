@@ -43,12 +43,12 @@ type Cart struct {
 }
 
 type Order struct {
-	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	User         primitive.ObjectID  `json:"user" bson:"user"`
-	DeliveryCrew *primitive.ObjectID `json:"delivery_crew" bson:"delivery_crew,omitempty"`
-	Status       bool                `json:"status" bson:"status"`
-	Total        float64             `json:"total" bson:"total"`
-	Date         time.Time           `json:"date" bson:"date"`
+	ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	User         primitive.ObjectID `json:"user" bson:"user"`
+	DeliveryCrew primitive.Null     `json:"delivery_crew" bson:"delivery_crew,omitempty"`
+	Status       bool               `json:"status" bson:"status"`
+	Total        float64            `json:"total" bson:"total"`
+	Date         time.Time          `json:"date" bson:"date"`
 }
 
 type OrderItem struct {
