@@ -54,7 +54,7 @@ type Order struct {
 type OrderItem struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	Order     primitive.ObjectID `json:"order" bson:"order"`
-	MenuItem  primitive.ObjectID `json:"menuitem" bson:"menuitem"`
+	MenuItem  string             `json:"menuitem" bson:"menuitem"`
 	Quantity  int16              `json:"quantity" bson:"quantity"`
 	UnitPrice float64            `json:"unit_price" bson:"unit_price"`
 	Price     float64            `json:"price" bson:"price"`

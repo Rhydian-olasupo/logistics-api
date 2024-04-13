@@ -22,12 +22,14 @@ import (
 )
 
 type DB struct {
-	Collection         *mongo.Collection
-	TokenCollection    *mongo.Collection
-	MenuItemCollection *mongo.Collection
-	UserGroup          *mongo.Collection
-	CategoryCollection *mongo.Collection
-	CartCollection     *mongo.Collection
+	Collection          *mongo.Collection
+	TokenCollection     *mongo.Collection
+	MenuItemCollection  *mongo.Collection
+	UserGroup           *mongo.Collection
+	CategoryCollection  *mongo.Collection
+	CartCollection      *mongo.Collection
+	OrderItemCollection *mongo.Collection
+	OrdersCollection    *mongo.Collection
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -923,4 +925,90 @@ func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		db.DeleteMenuItemsFromCart(w, r)
 	}
+}
+
+func placeNewOrderHandler(db *DB) (w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from token or context
+	// Get current user ID from the JWT token
+	username := r.Context().Value("username").(string)
+	userIDstr, err := getUserIDFromUsername(username)
+	// Convert the user ID string to primitive.ObjectID
+	userID, err := primitive.ObjectIDFromHex(userIDstr)
+
+	// Retrieve current cart items from the cart endpoint
+	cartURL := "http://localhost:8000/api/cart/menu-items"
+	req, err := http.NewRequest("GET", cartURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request to retrieve cart items", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("token", r.Header.Get("token")) // Pass the token to the cart endpoint
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to retrieve cart items", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Failed to retrieve cart items", resp.StatusCode)
+		return
+	}
+
+	var cartItems []models.Cart
+	err = json.NewDecoder(resp.Body).Decode(&cartItems)
+	if err != nil {
+		http.Error(w, "Failed to decode cart items", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a new order
+	order := models.Order{
+		User:   userID,
+		Status: false, // Assuming the order is initially not completed
+		Date:   time.Now(),
+	}
+
+	// Calculate the total price of the order
+	var totalPrice float64
+	for _, item := range cartItems {
+		totalPrice += item.Price
+	}
+	order.Total = totalPrice
+
+	// Insert the order into the database
+	_, err = db.OrdersCollection.InsertOne(context.Background(), order)
+	if err != nil {
+		http.Error(w, "Failed to create new order", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert cart items as order items
+	for _, item := range cartItems {
+		orderItem := models.OrderItem{
+			Order:     order.ID,
+			MenuItem:  item.MenuItem,
+			Quantity:  item.Quantity,
+			UnitPrice: item.UnitPrice,
+			Price:     item.Price,
+		}
+		_, err := db.OrderItemCollection.InsertOne(context.Background(), orderItem)
+		if err != nil {
+			http.Error(w, "Failed to create order item", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Clear the user's cart (delete all cart items)
+	_, err = db.CartCollection.DeleteMany(context.Background(), bson.M{"user": userID})
+	if err != nil {
+		http.Error(w, "Failed to clear cart items", http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with success message
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Order placed successfully"))
 }
