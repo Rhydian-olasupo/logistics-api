@@ -1021,3 +1021,59 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Order placed successfully"))
 }
+
+//Get Orders Endpoint
+
+func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
+	username := r.Context().Value("username").(string)
+	userIDstr, err := getUserIDFromUsername(username)
+	if err != nil {
+		http.Error(w, "Cant decode userID from username", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert the user ID string to primitive.ObjectID
+	/*userID, err := primitive.ObjectIDFromHex(userIDstr)
+	if err != nil {
+		http.Error(w, "Cant convert UserID to primitive.ObjectID", http.StatusBadRequest)
+		return
+	}*/
+
+	id, _ := primitive.ObjectIDFromHex(userIDstr)
+
+	// Query Cart collection for given userID
+	cursor, err := db.OrdersCollection.Find(context.TODO(), bson.M{"user": id})
+	if err != nil {
+		log.Printf("Error querying cart items: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	var orders []models.Order
+	for cursor.Next(context.TODO()) {
+		var order models.Order
+		if err := cursor.Decode(&order); err != nil {
+			log.Printf("Failed to decode cart item: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		orders = append(orders, order)
+	}
+	if err := cursor.Err(); err != nil {
+		log.Printf("Error while iterating over cart items: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode the result as JSON and write to response
+	jsonBytes, err := json.Marshal(orders)
+	if err != nil {
+		log.Printf("Failed to encode cart items to JSON: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonBytes)
+
+}
