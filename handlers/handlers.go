@@ -997,7 +997,7 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	// Insert cart items as order items
 	for _, item := range cartItems {
 		orderItem := models.OrderItem{
-			Order:     order.ID,
+			Order:     primitive.NewObjectID(),
 			MenuItem:  item.MenuItem,
 			Quantity:  item.Quantity,
 			UnitPrice: item.UnitPrice,
