@@ -57,7 +57,7 @@ func main() {
 	currentUserRouter.Use(middleware.SetCurrentUserMiddleware)
 	currentUserRouter.HandleFunc("/users/me/", db.GetCurrentUserHandler).Methods("GET")
 	currentUserRouter.HandleFunc("/cart/menu-items", db.CartEndpoint).Methods("GET", "POST", "DELETE")
-	currentUserRouter.HandleFunc("/orders", db.PlaceNewOrderHandler).Methods("POST")
+	currentUserRouter.HandleFunc("/orders", db.OrderEndpoint).Methods("GET", "POST")
 
 	//Define routes that require jwttoken validation middleware
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()

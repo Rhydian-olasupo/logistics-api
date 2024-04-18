@@ -1077,3 +1077,14 @@ func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonBytes)
 
 }
+
+func (db *DB) OrderEndpoint(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		db.GetallOrders(w, r)
+	case http.MethodPost:
+		db.PlaceNewOrderHandler(w, r)
+	default:
+		http.Error(w, "Request Method not Accepted", http.StatusBadRequest)
+	}
+}
