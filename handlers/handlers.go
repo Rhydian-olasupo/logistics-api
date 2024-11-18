@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type DB struct {
@@ -30,6 +31,20 @@ type DB struct {
 	CartCollection      *mongo.Collection
 	OrderItemCollection *mongo.Collection
 	OrdersCollection    *mongo.Collection
+}
+
+// UserWithHash extends User to include PasswordHash for writing to the database.
+// type UserWithHash struct {
+// 	models.User
+// 	PasswordHash string `json:"password" bson:"password"` // Replaces the "password" field in the collection
+// }
+
+// Save user with flat structure
+type UserFlat struct {
+	ID           interface{} `json:"id" bson:"_id,omitempty"`
+	Name         string      `json:"name" bson:"name"`
+	Email        string      `json:"email" bson:"email"`
+	PasswordHash string      `json:"password" bson:"password"`
 }
 
 var secretKey = []byte(os.Getenv("session_secret"))
@@ -65,8 +80,34 @@ func (db *DB) CreateUserhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if newUser.Name == "" || newUser.Password == "" {
+		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to Hash Password", http.StatusInternalServerError)
+		return
+	}
+
+	// Create the UserWithHash object
+	// userWithHash := UserWithHash{
+	// 	User: models.User{
+	// 		Name:  newUser.Name,
+	// 		Email: newUser.Email,
+	// 	},
+	// 	PasswordHash: string(passwordHash), // This will override the "password" field when writing to the database
+	// }
+
+	user := UserFlat{
+		Name:         newUser.Name,
+		Email:        newUser.Email,
+		PasswordHash: string(passwordHash),
+	}
+
 	// Insert the new user into the database
-	result, err := db.Collection.InsertOne(context.TODO(), newUser)
+	result, err := db.Collection.InsertOne(context.TODO(), user)
 	if err != nil {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -90,16 +131,17 @@ func (db *DB) CreateUserhandler(w http.ResponseWriter, r *http.Request) {
 func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		http.Error(w, "Please poass the data in URL encoded form", http.StatusBadRequest)
+		http.Error(w, "Invalid Form Data", http.StatusBadRequest)
 		return
 	}
 
 	username := r.PostForm.Get("name")
 	password := r.PostForm.Get("password")
 
-	// Log what the endpoint is receiving
-	fmt.Printf("Received request for username: %s\n", username)
-	fmt.Printf("Received request for password: %s\n", password)
+	if username == "" || password == "" {
+		http.Error(w, "Username and Password are required", http.StatusBadRequest)
+		return
+	}
 
 	// MongoDB client and context
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -109,27 +151,48 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	//collection := mongoClient.Database(dbName).Collection(collection)
 
 	// Find the user by username
-	var user struct {
-		Password string `json:"password" bson:"password"`
-	}
+	// var user struct {
+	// 	Password string `json:"password" bson:"password"`
+	// }
+	// err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
+	// if err != nil {
+	// 	if err == mongo.ErrNoDocuments {
+	// 		http.Error(w, "User not found", http.StatusNotFound)
+	// 		return
+	// 	}
+	// 	http.Error(w, "Database error", http.StatusInternalServerError)
+	// 	return
+	// }
+
+	// if password != user.Password {
+	// 	http.Error(w, "Invalid Password", http.StatusUnauthorized)
+	// 	return
+	// }
+
+	var user UserFlat
+
+	// fmt.Println("Query:", username)
+	// fmt.Printf("Query: %+v\n", bson.M{"name": username})
+
 	err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			http.Error(w, "User not found", http.StatusNotFound)
+			http.Error(w, "User not Found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		http.Error(w, "Database Error", http.StatusInternalServerError)
 		return
 	}
 
-	if password != user.Password {
-		http.Error(w, "Invalid Password", http.StatusUnauthorized)
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		http.Error(w, "Invalid Credentials", http.StatusBadRequest)
 		return
 	}
 
 	// Password is correct, generate JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": username,
+		"exp":      time.Now().Add(time.Hour * 1).Unix(),
 		"iat":      time.Now().Unix(),
 	})
 	tokenString, err := token.SignedString([]byte(secretKey))
@@ -139,6 +202,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Insert the username and JWT token into the tokensCollection
+	//This would be modified into having refresh token
 
 	_, err = db.TokenCollection.InsertOne(ctx, bson.M{"username": username, "tokens": tokenString})
 	if err != nil {
