@@ -30,6 +30,7 @@ func main() {
 	cartcollection := utils.GetCollection(client, "apiDB", "Cart")
 	orderscollection := utils.GetCollection(client, "apiDB", "Orders")
 	orderitemcollection := utils.GetCollection(client, "apiDB", "OrderItem")
+	refreshtokencollection := utils.GetCollection(client, "apiDB","RefreshTokens")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
@@ -41,6 +42,7 @@ func main() {
 		CartCollection:      cartcollection,
 		OrdersCollection:    orderscollection,
 		OrderItemCollection: orderitemcollection,
+		RefreshTokenCollection: refreshtokencollection,
 	}
 	mainRouter := mux.NewRouter()
 	//Define routes that require RequestBody validation

@@ -31,6 +31,7 @@ type DB struct {
 	CartCollection      *mongo.Collection
 	OrderItemCollection *mongo.Collection
 	OrdersCollection    *mongo.Collection
+	RefreshTokenCollection *mongo.Collection
 }
 
 // UserWithHash extends User to include PasswordHash for writing to the database.
@@ -145,32 +146,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// MongoDB collection instance
-	//collection := mongoClient.Database(dbName).Collection(collection)
-
-	// Find the user by username
-	// var user struct {
-	// 	Password string `json:"password" bson:"password"`
-	// }
-	// err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
-	// if err != nil {
-	// 	if err == mongo.ErrNoDocuments {
-	// 		http.Error(w, "User not found", http.StatusNotFound)
-	// 		return
-	// 	}
-	// 	http.Error(w, "Database error", http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// if password != user.Password {
-	// 	http.Error(w, "Invalid Password", http.StatusUnauthorized)
-	// 	return
-	// }
-
 	var user UserFlat
-
-	// fmt.Println("Query:", username)
-	// fmt.Printf("Query: %+v\n", bson.M{"name": username})
 
 	err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
 	if err != nil {
@@ -190,7 +166,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Password is correct, generate JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": username,
-		"exp":      time.Now().Add(time.Hour * 1).Unix(),
+		"exp":      time.Now().Add(time.Hour * 1).Unix(), // Access token expires in 1 hour
 		"iat":      time.Now().Unix(),
 	})
 	tokenString, err := token.SignedString([]byte(secretKey))
@@ -199,15 +175,31 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Insert the username and JWT token into the tokensCollection
-	//This would be modified into having refresh token
+	//Generate Refresh Token
 
-	_, err = db.TokenCollection.InsertOne(ctx, bson.M{"username": username, "tokens": tokenString})
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"username":user.Name,
+		"exp": time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
+		"iat": time.Now().Unix(),	
+	})
+
+	refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
 	if err != nil {
-		http.Error(w, "Failed to oinsert token into the database", http.StatusInternalServerError)
+		http.Error(w, "Failed to generate token"+err.Error(),http.StatusInternalServerError)
 		return
 	}
 
+	//Store refresh token in the database
+	_, err = db.RefreshTokenCollection.InsertOne(ctx, bson.M{
+		"username":user.Name,
+		"refreshToken":refreshTokenString,
+		"iat": time.Now().Unix(),
+	})
+	if err != nil{
+		http.Error(w, "Failed to store refresh Token"+err.Error(),http.StatusInternalServerError)
+		return
+
+	}
 	// Token generated successfully, send it in the response
 	response := Response{Token: tokenString}
 	respJSON, err := json.Marshal(response)
