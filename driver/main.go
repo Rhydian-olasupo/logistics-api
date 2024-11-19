@@ -30,18 +30,18 @@ func main() {
 	cartcollection := utils.GetCollection(client, "apiDB", "Cart")
 	orderscollection := utils.GetCollection(client, "apiDB", "Orders")
 	orderitemcollection := utils.GetCollection(client, "apiDB", "OrderItem")
-	refreshtokencollection := utils.GetCollection(client, "apiDB","RefreshTokens")
+	refreshtokencollection := utils.GetCollection(client, "apiDB", "RefreshTokens")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
-		Collection:          collection,
-		TokenCollection:     tokensCollection,
-		MenuItemCollection:  menuitemscollection,
-		UserGroup:           UserGroupcollection,
-		CategoryCollection:  categoryCollection,
-		CartCollection:      cartcollection,
-		OrdersCollection:    orderscollection,
-		OrderItemCollection: orderitemcollection,
+		Collection:             collection,
+		TokenCollection:        tokensCollection,
+		MenuItemCollection:     menuitemscollection,
+		UserGroup:              UserGroupcollection,
+		CategoryCollection:     categoryCollection,
+		CartCollection:         cartcollection,
+		OrdersCollection:       orderscollection,
+		OrderItemCollection:    orderitemcollection,
 		RefreshTokenCollection: refreshtokencollection,
 	}
 	mainRouter := mux.NewRouter()
@@ -53,6 +53,7 @@ func main() {
 	// Define routes that don't use any middleware
 	noMiddlewareRouter := mainRouter.PathPrefix("/token").Subrouter()
 	noMiddlewareRouter.HandleFunc("/login/", db.LoginTokenHandler).Methods("POST")
+	noMiddlewareRouter.HandleFunc("/refresh_token", db.RefreshTokenHandler).Methods("POST")
 
 	// Define routes that require current user middleware
 	currentUserRouter := mainRouter.PathPrefix("/api").Subrouter()
