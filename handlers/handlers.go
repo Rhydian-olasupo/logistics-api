@@ -23,14 +23,14 @@ import (
 )
 
 type DB struct {
-	Collection          *mongo.Collection
-	TokenCollection     *mongo.Collection
-	MenuItemCollection  *mongo.Collection
-	UserGroup           *mongo.Collection
-	CategoryCollection  *mongo.Collection
-	CartCollection      *mongo.Collection
-	OrderItemCollection *mongo.Collection
-	OrdersCollection    *mongo.Collection
+	Collection             *mongo.Collection
+	TokenCollection        *mongo.Collection
+	MenuItemCollection     *mongo.Collection
+	UserGroup              *mongo.Collection
+	CategoryCollection     *mongo.Collection
+	CartCollection         *mongo.Collection
+	OrderItemCollection    *mongo.Collection
+	OrdersCollection       *mongo.Collection
 	RefreshTokenCollection *mongo.Collection
 }
 
@@ -51,7 +51,8 @@ type UserFlat struct {
 var secretKey = []byte(os.Getenv("session_secret"))
 
 type Response struct {
-	Token string `json:"token" bson:"token"`
+	AccessToken  string `json:"token" bson:"token"`
+	RefreshToken string `json:"refresh_token" bson:"refresh_token"`
 }
 
 //CreateUserhandler handles requests to create new user
@@ -176,41 +177,140 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Generate Refresh Token
-
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
-		"username":user.Name,
-		"exp": time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
-		"iat": time.Now().Unix(),	
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": username,
+		"exp":      time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
+		"iat":      time.Now().Unix(),
+		"type": "refresh",
 	})
 
 	refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
 	if err != nil {
-		http.Error(w, "Failed to generate token"+err.Error(),http.StatusInternalServerError)
+		http.Error(w, "Failed to generate token "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	//Store refresh token in the database
 	_, err = db.RefreshTokenCollection.InsertOne(ctx, bson.M{
-		"username":user.Name,
-		"refreshToken":refreshTokenString,
-		"iat": time.Now().Unix(),
+		"username":     user.Name,
+		"refreshToken": refreshTokenString,
+		"iat":          time.Now().Unix(),
 	})
-	if err != nil{
-		http.Error(w, "Failed to store refresh Token"+err.Error(),http.StatusInternalServerError)
+	if err != nil {
+		http.Error(w, "Failed to store refresh Token"+err.Error(), http.StatusInternalServerError)
 		return
-
 	}
+
 	// Token generated successfully, send it in the response
-	response := Response{Token: tokenString}
+	response := Response{AccessToken: tokenString, RefreshToken: refreshTokenString}
 	respJSON, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respJSON)
+}
+
+
+func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	if request.RefreshToken == "" {
+		http.Error(w, "Refresh token is required",http.StatusBadRequest)
+		return
+	}
+
+	token,err := jwt.Parse(request.RefreshToken, func(token *jwt.Token) (interface {}, error) {
+		if _,ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected sigining method: %v", token.Header["alg"])
+		}
+
+		return []byte(secretKey), nil 
+
+	})
+
+	if err != nil || !token.Valid{
+		http.Error(w,"Invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid{
+		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		return
+	}
+	if claims["type"] != "refresh" {
+        http.Error(w, "Invalid token type", http.StatusUnauthorized)
+        return
+    }
+
+    username, ok := claims["username"].(string)
+    if !ok {
+        http.Error(w, "Invalid token payload", http.StatusUnauthorized)
+        return
+    }
+
+    // Check if the refresh token exists in the database
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    var storedToken struct {
+        RefreshToken string `json:"refreshToken" bson:"refreshToken"`
+    }
+
+    err = db.RefreshTokenCollection.FindOne(ctx, bson.M{
+        "username":     username,
+        "refreshToken": request.RefreshToken,
+    }).Decode(&storedToken)
+
+    if err != nil {
+        if err == mongo.ErrNoDocuments {
+            http.Error(w, "Refresh token not found", http.StatusUnauthorized)
+            return
+        }
+        http.Error(w, "Internal server error", http.StatusInternalServerError)
+        return
+    }
+
+    // Generate a new access token
+    newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+        "username": username,
+        "exp":      time.Now().Add(15 * time.Minute).Unix(),
+        "iat":      time.Now().Unix(),
+    })
+
+    newAccessTokenString, err := newAccessToken.SignedString([]byte(secretKey))
+    if err != nil {
+        http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+        return
+    }
+
+    // Optionally, generate a new refresh token and replace the old one -- TODO
+
+    // Send the new access token in the response
+    response := struct {
+        AccessToken string `json:"access_token"`
+    }{
+        AccessToken: newAccessTokenString,
+    }
+
+    respJSON, err := json.Marshal(response)
+    if err != nil {
+        http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    w.Write(respJSON)
 }
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
