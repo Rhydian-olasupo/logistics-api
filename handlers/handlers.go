@@ -49,57 +49,56 @@ type UserFlat struct {
 
 var secretKey = []byte(os.Getenv("session_secret"))
 
-/*var (
-	mongoClient *mongo.Client
-	dbName      = "apiDB"
-	collection  = "logistics"
-)*/
-
 type Response struct {
 	Token string `json:"token" bson:"token"`
 }
 
 //CreateUserhandler handles requests to create new user
 
-func (db *DB) CreateUserhandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Request Body:", r.Body)
+func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Declare a variable to hold the new user
 	var newUser models.User
 
-	// Read the request body
-	postBody, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
+	// Read and decode the request body
+	if err := json.NewDecoder(r.Body).Decode(&newUser); err != nil {
+		http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
-	// Decode the JSON request body into newUser struct
-	if err := json.Unmarshal(postBody, &newUser); err != nil {
-		http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
+	// Validate the required fields
 	if newUser.Name == "" || newUser.Password == "" {
 		http.Error(w, "Username and password are required", http.StatusBadRequest)
 		return
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
-	if err != nil {
-		http.Error(w, "Failed to Hash Password", http.StatusInternalServerError)
+	// Check if the username already exists
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var existingUser struct {
+		Name string `bson:"name"`
+	}
+	err := db.Collection.FindOne(ctx, bson.M{"name": newUser.Name}).Decode(&existingUser)
+	if err != nil && err != mongo.ErrNoDocuments {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Create the UserWithHash object
-	// userWithHash := UserWithHash{
-	// 	User: models.User{
-	// 		Name:  newUser.Name,
-	// 		Email: newUser.Email,
-	// 	},
-	// 	PasswordHash: string(passwordHash), // This will override the "password" field when writing to the database
-	// }
+	// If a user with the same name exists, return an error
+	if existingUser.Name == newUser.Name {
+		http.Error(w, "Username is already taken", http.StatusBadRequest)
+		return
+	}
 
+	// Hash the user's password
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to hash password: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare the user object to insert into the database
 	user := UserFlat{
 		Name:         newUser.Name,
 		Email:        newUser.Email,
@@ -107,19 +106,18 @@ func (db *DB) CreateUserhandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert the new user into the database
-	result, err := db.Collection.InsertOne(context.TODO(), user)
+	result, err := db.Collection.InsertOne(ctx, user)
 	if err != nil {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Prepare the response
+	// Send success response
 	response := map[string]interface{}{
 		"message":     "User created successfully",
 		"inserted_id": result.InsertedID,
 	}
 
-	// Encode the response as JSON and send it
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(response); err != nil {

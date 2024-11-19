@@ -46,7 +46,7 @@ func main() {
 	//Define routes that require RequestBody validation
 	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
 	validationRouter.Use(middleware.ValidateRequestBody)
-	validationRouter.HandleFunc("/users", db.CreateUserhandler).Methods("POST")
+	validationRouter.HandleFunc("/users", db.CreateUserHandler).Methods("POST")
 
 	// Define routes that don't use any middleware
 	noMiddlewareRouter := mainRouter.PathPrefix("/token").Subrouter()
