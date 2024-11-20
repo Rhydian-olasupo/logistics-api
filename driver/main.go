@@ -47,6 +47,7 @@ func main() {
 	mainRouter := mux.NewRouter()
 	//Define routes that require RequestBody validation
 	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
+	validationRouter.Use(middleware.EnableCors)
 	validationRouter.Use(middleware.ValidateRequestBody)
 	validationRouter.HandleFunc("/users", db.CreateUserHandler).Methods("POST")
 
