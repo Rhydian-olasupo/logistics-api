@@ -91,13 +91,83 @@ func ValidateRequestBody(next http.Handler) http.Handler {
 
 var secretKey = []byte(os.Getenv("session_secret"))
 
-// Define a custom type for context key
-//type contextKey string
+// // Define a custom type for context key
+type contextKey string
 
-// Define a constant for the context key
-/*var (
-	currentUserKey contextKey = "currentUser"
-)*/
+// //Define a constant for the context key
+ var (
+ 	USERNAME contextKey
+	USERROLE contextKey
+)
+
+// type user struct {
+// 	Username string `json:"username" bson:"username"`
+// }
+
+// // AuthMiddleware validates the JWT token and sets the user in the context
+// func (db *DB) AuthMiddleware(next http.Handler) http.Handler {
+//     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//         // Extract the token from the Authorization header
+//         tokenString := r.Header.Get("token")
+//         if tokenString == "" {
+//             http.Error(w, "Authorization header and token missing", http.StatusUnauthorized)
+//             return
+//         }
+
+//         // parts := strings.SplitN(authHeader, " ", 2)
+//         // if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+//         //     http.Error(w, "Invalid Authorization header format. Expected 'Bearer <token>'", http.StatusUnauthorized)
+//         //     return
+//         // }
+//         secretKey := []byte(os.Getenv("session_secret")) 
+
+//         // Parse and validate the token
+//         token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+//             if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+//                 return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+//             }
+//             return secretKey, nil
+//         })
+
+//         if err != nil || !token.Valid {
+//             http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+//             return
+//         }
+
+//         // Extract claims
+//         claims, ok := token.Claims.(jwt.MapClaims)
+//         if !ok {
+//             http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+//             return
+//         }
+
+//         // Extract the "username" claim
+//         username, ok := claims["username"].(string)
+//         if !ok {
+//             http.Error(w, "Invalid token payload", http.StatusUnauthorized)
+//             return
+//         }
+
+//         // // Optionally, you can retrieve additional user information from the database
+//         // var user User
+//         // ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//         // defer cancel()
+
+//         // err = db.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+//         // if err != nil {
+//         //     if err == mongo.ErrNoDocuments {
+//         //         http.Error(w, "User not found", http.StatusUnauthorized)
+//         //         return
+//         //     }
+//         //     http.Error(w, "Internal server error", http.StatusInternalServerError)
+//         //     return
+//         // }
+
+//         // Attach user to the request context
+//         ctx = context.WithValue(r.Context(), currentUserKey, user)
+//         next.ServeHTTP(w, r.WithContext(ctx))
+//     })
+// }
 
 // SetCurrentUserMiddleware is a middleware function that sets the current user in the request context based on JWT token.
 // Middleware function to set the current user in the request context
@@ -115,7 +185,7 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Set the username value in the request context
-		ctx := context.WithValue(r.Context(), "username", username)
+		ctx := context.WithValue(r.Context(), USERNAME, username)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -175,34 +245,34 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			w.Write([]byte("Access Denied; Please check the access token"))
 			return
 		}
-		// Extract claims from the token
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("Invalid token claims"))
-			return
-		}
-		// Extract the "name" claim (as a string)
-		name, ok := claims["username"].(string)
-		if !ok {
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("Missing or invalid 'name' field in claims"))
-			return
-		}
+		// // Extract claims from the token
+		// claims, ok := token.Claims.(jwt.MapClaims)
+		// if !ok {
+		// 	w.WriteHeader(http.StatusForbidden)
+		// 	w.Write([]byte("Invalid token claims"))
+		// 	return
+		// }
+		// // Extract the "name" claim (as a string)
+		// name, ok := claims["username"].(string)
+		// if !ok {
+		// 	w.WriteHeader(http.StatusForbidden)
+		// 	w.Write([]byte("Missing or invalid 'name' field in claims"))
+		// 	return
+		// }
 
-		userToken, err := findTokenByUsername(name)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error finding user token: " + err.Error()))
-			return
-		}
+		// userToken, err := findTokenByUsername(name)
+		// if err != nil {
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	w.Write([]byte("Error finding user token: " + err.Error()))
+		// 	return
+		// }
 
-		if userToken != tokenString {
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("Access forbidden; Incorrect token"))
-			return
+		// if userToken != tokenString {
+		// 	w.WriteHeader(http.StatusForbidden)
+		// 	w.Write([]byte("Access forbidden; Incorrect token"))
+		// 	return
 
-		}
+		// }
 		next.ServeHTTP(w, r)
 
 	})
@@ -234,7 +304,7 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
 		}
 
-		ctx := context.WithValue(r.Context(), "userRole", userRole)
+		ctx := context.WithValue(r.Context(), USERROLE, userRole)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -242,36 +312,36 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 }
 
 // Function to query MongoDb collection to find user's token by username
-func findTokenByUsername(username string) (string, error) {
-	// Establish MongoDB connection with context
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
-	defer cancel()
+// func findTokenByUsername(username string) (string, error) {
+// 	// Establish MongoDB connection with context
+// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
+// 	defer cancel()
 
-	client, err := utils.InitMongoClient()
-	if err != nil {
-		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
-	}
-	defer client.Disconnect(ctx)
+// 	client, err := utils.InitMongoClient()
+// 	if err != nil {
+// 		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
+// 	}
+// 	defer client.Disconnect(ctx)
 
-	// Get collection reference
-	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+// 	// Get collection reference
+// 	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
 
-	// Query and decode result
-	var result struct {
-		Token string `json:"tokens" bson:"tokens"`
-	}
-	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return "", fmt.Errorf("token not found for username: %s", username)
-		}
-		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
-	}
+// 	// Query and decode result
+// 	var result struct {
+// 		Token string `json:"tokens" bson:"tokens"`
+// 	}
+// 	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
+// 	if err != nil {
+// 		if err == mongo.ErrNoDocuments {
+// 			return "", fmt.Errorf("token not found for username: %s", username)
+// 		}
+// 		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
+// 	}
 
-	fmt.Println(result.Token)
+// 	fmt.Println(result.Token)
 
-	return result.Token, nil
-}
+// 	return result.Token, nil
+// }
 
 // Function to get userRole from the UserGroup collection
 func getUserRoleFromDB(username string) (string, error) {
