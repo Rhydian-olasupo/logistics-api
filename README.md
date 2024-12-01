@@ -39,7 +39,7 @@ Ensure you have the following installed:
 
 1. Clone the repository:  
    ```bash
-   git clone https://github.com/yourusername/LittleLemonAPI.git
+   git clone https://github.com/rhydian-olasupo/LittleLemonAPI.git
    cd LittleLemonAPI
    ```
 
@@ -52,8 +52,6 @@ Ensure you have the following installed:
    ```plaintext
    DB_URI=mongodb://localhost:27017
    JWT_SECRET=your_secret_key
-   TOKEN_EXPIRY=3600
-   REFRESH_TOKEN_EXPIRY=7200
    ```
 
 4. Run the server:  
