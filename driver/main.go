@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"go_trial/gorest/handlers"
+	"go_trial/gorest/telem"
 	"go_trial/gorest/utils"
 	"log"
 	"net/http"
@@ -11,9 +12,30 @@ import (
 	"go_trial/gorest/middleware"
 
 	"github.com/gorilla/mux"
+
 )
 
+
+
 func main() {
+
+	handlers.Init()
+	ctx := context.Background()
+
+	// Initialize metrics
+	metricsShutdown, err := telem.InitMetrics("my-service")
+	if err != nil {
+		log.Fatalf("Failed to initialize metrics: %v", err)
+	}
+	defer metricsShutdown(ctx)
+
+	// Initialize tracing
+	tracingShutdown, err := telem.InitTracing("my-service")
+	if err != nil {
+		log.Fatalf("Failed to initialize tracing: %v", err)
+	}
+	defer tracingShutdown(ctx)
+	
 	// Initialize MongoDB client
 	client, err := utils.InitMongoClient()
 	if err != nil {

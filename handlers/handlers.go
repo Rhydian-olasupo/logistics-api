@@ -16,9 +16,11 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -55,15 +57,56 @@ type Response struct {
 	RefreshToken string `json:"refresh_token" bson:"refresh_token"`
 }
 
+// Define Prometheus metrics
+var (
+	// Counter for the number of requests
+	requestCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "create_user_requests_total",
+			Help: "Total number of requests to create user",
+		},
+		[]string{"status"}, // Label for status (e.g., success, error)
+	)
+
+	// Histogram for request duration
+	requestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "create_user_duration_seconds",
+			Help:    "Histogram of request durations for creating user",
+			Buckets: prometheus.DefBuckets, // Default buckets
+		},
+		[]string{"status"}, // Label for status (e.g., success, error)
+	)
+)
+
+func Init() {
+	// Register metrics with Prometheus
+	prometheus.MustRegister(requestCount)
+	prometheus.MustRegister(requestDuration)
+}
+
 //CreateUserhandler handles requests to create new user
 
 func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	// Declare a variable to hold the new user
+	// Start the request duration timer
+	start := time.Now()
+
+	// Start tracing (OpenTelemetry)
+	ctx, span := otel.Tracer("auth-service").Start(r.Context(), "CreateUserhandler")
+	defer span.End()
+
 	var newUser models.User
 
-	// Read and decode the request body
+	// Decode request body
+	_, decodeSpan := otel.Tracer("auth_service").Start(ctx, "Decoding request body")
+	decodeSpan.End()
+
 	if err := json.NewDecoder(r.Body).Decode(&newUser); err != nil {
+		decodeSpan.RecordError(err)
 		http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusBadRequest)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 	defer r.Body.Close()
@@ -71,6 +114,9 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate the required fields
 	if newUser.Name == "" || newUser.Password == "" {
 		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 
@@ -84,12 +130,18 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	err := db.Collection.FindOne(ctx, bson.M{"name": newUser.Name}).Decode(&existingUser)
 	if err != nil && err != mongo.ErrNoDocuments {
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 
 	// If a user with the same name exists, return an error
 	if existingUser.Name == newUser.Name {
 		http.Error(w, "Username is already taken", http.StatusBadRequest)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 
@@ -97,6 +149,9 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Failed to hash password: "+err.Error(), http.StatusInternalServerError)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 
@@ -111,6 +166,9 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Collection.InsertOne(ctx, user)
 	if err != nil {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
 
@@ -124,8 +182,15 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Error encoding response: "+err.Error(), http.StatusInternalServerError)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
+
+	// Increment success counter and record duration
+	requestCount.WithLabelValues("success").Inc()
+	requestDuration.WithLabelValues("success").Observe(time.Since(start).Seconds())
 }
 
 func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +246,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 		"username": username,
 		"exp":      time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
 		"iat":      time.Now().Unix(),
-		"type": "refresh",
+		"type":     "refresh",
 	})
 
 	refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
@@ -213,7 +278,6 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(respJSON)
 }
 
-
 func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		RefreshToken string `json:"refresh_token"`
@@ -225,92 +289,92 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.RefreshToken == "" {
-		http.Error(w, "Refresh token is required",http.StatusBadRequest)
+		http.Error(w, "Refresh token is required", http.StatusBadRequest)
 		return
 	}
 
-	token,err := jwt.Parse(request.RefreshToken, func(token *jwt.Token) (interface {}, error) {
-		if _,ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+	token, err := jwt.Parse(request.RefreshToken, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected sigining method: %v", token.Header["alg"])
 		}
 
-		return []byte(secretKey), nil 
+		return []byte(secretKey), nil
 
 	})
 
-	if err != nil || !token.Valid{
-		http.Error(w,"Invalid refresh token", http.StatusUnauthorized)
+	if err != nil || !token.Valid {
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid{
+	if !ok || !token.Valid {
 		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
 		return
 	}
 	if claims["type"] != "refresh" {
-        http.Error(w, "Invalid token type", http.StatusUnauthorized)
-        return
-    }
+		http.Error(w, "Invalid token type", http.StatusUnauthorized)
+		return
+	}
 
-    username, ok := claims["username"].(string)
-    if !ok {
-        http.Error(w, "Invalid token payload", http.StatusUnauthorized)
-        return
-    }
+	username, ok := claims["username"].(string)
+	if !ok {
+		http.Error(w, "Invalid token payload", http.StatusUnauthorized)
+		return
+	}
 
-    // Check if the refresh token exists in the database
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
+	// Check if the refresh token exists in the database
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-    var storedToken struct {
-        RefreshToken string `json:"refreshToken" bson:"refreshToken"`
-    }
+	var storedToken struct {
+		RefreshToken string `json:"refreshToken" bson:"refreshToken"`
+	}
 
-    err = db.RefreshTokenCollection.FindOne(ctx, bson.M{
-        "username":     username,
-        "refreshToken": request.RefreshToken,
-    }).Decode(&storedToken)
+	err = db.RefreshTokenCollection.FindOne(ctx, bson.M{
+		"username":     username,
+		"refreshToken": request.RefreshToken,
+	}).Decode(&storedToken)
 
-    if err != nil {
-        if err == mongo.ErrNoDocuments {
-            http.Error(w, "Refresh token not found", http.StatusUnauthorized)
-            return
-        }
-        http.Error(w, "Internal server error", http.StatusInternalServerError)
-        return
-    }
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "Refresh token not found", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-    // Generate a new access token
-    newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-        "username": username,
-        "exp":      time.Now().Add(15 * time.Minute).Unix(),
-        "iat":      time.Now().Unix(),
-    })
+	// Generate a new access token
+	newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": username,
+		"exp":      time.Now().Add(15 * time.Minute).Unix(),
+		"iat":      time.Now().Unix(),
+	})
 
-    newAccessTokenString, err := newAccessToken.SignedString([]byte(secretKey))
-    if err != nil {
-        http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
-        return
-    }
+	newAccessTokenString, err := newAccessToken.SignedString([]byte(secretKey))
+	if err != nil {
+		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+		return
+	}
 
-    // Optionally, generate a new refresh token and replace the old one -- TODO
+	// Optionally, generate a new refresh token and replace the old one -- TODO
 
-    // Send the new access token in the response
-    response := struct {
-        AccessToken string `json:"access_token"`
-    }{
-        AccessToken: newAccessTokenString,
-    }
+	// Send the new access token in the response
+	response := struct {
+		AccessToken string `json:"access_token"`
+	}{
+		AccessToken: newAccessTokenString,
+	}
 
-    respJSON, err := json.Marshal(response)
-    if err != nil {
-        http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
-        return
-    }
+	respJSON, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    w.Write(respJSON)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respJSON)
 }
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
