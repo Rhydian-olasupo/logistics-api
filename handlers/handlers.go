@@ -77,12 +77,26 @@ var (
 		},
 		[]string{"status"}, // Label for status (e.g., success, error)
 	)
+
+	// Counter for the number of  login requests
+	loginRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "login_requests_total",
+		Help: "Total number of login requests",
+	})
+
+	loginRequestsbyStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "login_requests_by_status_total",
+		Help: "Total number of login requests by status",
+	},
+		[]string{"status"})
 )
 
 func Init() {
 	// Register metrics with Prometheus
 	prometheus.MustRegister(requestCount)
 	prometheus.MustRegister(requestDuration)
+	prometheus.MustRegister(loginRequests)
+	prometheus.MustRegister(loginRequestsbyStatus)
 }
 
 //CreateUserhandler handles requests to create new user
@@ -194,9 +208,11 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
+	loginRequests.Inc()
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, "Invalid Form Data", http.StatusBadRequest)
+		loginRequestsbyStatus.WithLabelValues("Error").Inc()
 		return
 	}
 
@@ -218,6 +234,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			http.Error(w, "User not Found", http.StatusNotFound)
+			loginRequestsbyStatus.WithLabelValues("Error").Inc()
 			return
 		}
 		http.Error(w, "Database Error", http.StatusInternalServerError)
@@ -226,6 +243,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		http.Error(w, "Invalid Credentials", http.StatusBadRequest)
+		loginRequestsbyStatus.WithLabelValues("Error").Inc()
 		return
 	}
 
@@ -238,6 +256,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		loginRequestsbyStatus.WithLabelValues("Error").Inc()
 		return
 	}
 
@@ -252,6 +271,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
 	if err != nil {
 		http.Error(w, "Failed to generate token "+err.Error(), http.StatusInternalServerError)
+		loginRequestsbyStatus.WithLabelValues("Error").Inc()
 		return
 	}
 
@@ -263,6 +283,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		http.Error(w, "Failed to store refresh Token"+err.Error(), http.StatusInternalServerError)
+		loginRequestsbyStatus.WithLabelValues("Error")
 		return
 	}
 
@@ -276,6 +297,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respJSON)
+	loginRequestsbyStatus.WithLabelValues("success").Inc()
 }
 
 func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
