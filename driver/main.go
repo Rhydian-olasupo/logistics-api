@@ -66,7 +66,7 @@ func main() {
 		OrderItemCollection:    orderitemcollection,
 		RefreshTokenCollection: refreshtokencollection,
 	}
-	mainRouter := mux.NewRouter()
+	mainRouter := mux.NewRouter().StrictSlash(true)
 	//Define routes that require RequestBody validation
 	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
 	validationRouter.Use(middleware.EnableCors)
