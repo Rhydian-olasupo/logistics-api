@@ -461,7 +461,7 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username, ok:= r.Context().Value("username").(string)
+	username, ok:= r.Context().Value("USERNAME").(string)
 	if !ok || username == "" {
         http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
         return
@@ -483,8 +483,8 @@ func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with user details
-	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }
 
