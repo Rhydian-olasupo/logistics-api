@@ -12,10 +12,7 @@ import (
 	"go_trial/gorest/middleware"
 
 	"github.com/gorilla/mux"
-
 )
-
-
 
 func main() {
 
@@ -35,7 +32,7 @@ func main() {
 		log.Fatalf("Failed to initialize tracing: %v", err)
 	}
 	defer tracingShutdown(ctx)
-	
+
 	// Initialize MongoDB client
 	client, err := utils.InitMongoClient()
 	if err != nil {
@@ -53,23 +50,27 @@ func main() {
 	orderscollection := utils.GetCollection(client, "apiDB", "Orders")
 	orderitemcollection := utils.GetCollection(client, "apiDB", "OrderItem")
 	refreshtokencollection := utils.GetCollection(client, "apiDB", "RefreshTokens")
+	blacklistcollection := utils.GetCollection(client, "apiDB", "Blacklist")
+	auditcollection := utils.GetCollection(client, "apiDB", "Audit")
 
 	// Create an instance of your DB
 	db := &handlers.DB{
-		Collection:             collection,
-		TokenCollection:        tokensCollection,
-		MenuItemCollection:     menuitemscollection,
-		UserGroup:              UserGroupcollection,
-		CategoryCollection:     categoryCollection,
-		CartCollection:         cartcollection,
-		OrdersCollection:       orderscollection,
-		OrderItemCollection:    orderitemcollection,
-		RefreshTokenCollection: refreshtokencollection,
+		Collection:               collection,
+		TokenCollection:          tokensCollection,
+		MenuItemCollection:       menuitemscollection,
+		UserGroup:                UserGroupcollection,
+		CategoryCollection:       categoryCollection,
+		CartCollection:           cartcollection,
+		OrdersCollection:         orderscollection,
+		OrderItemCollection:      orderitemcollection,
+		RefreshTokenCollection:   refreshtokencollection,
+		TokenBlacklistCollection: blacklistcollection,
+		AuditLogCollection:       auditcollection,
 	}
-	mainRouter := mux.NewRouter().StrictSlash(true)
+	mainRouter := mux.NewRouter()
 	//Define routes that require RequestBody validation
 	validationRouter := mainRouter.PathPrefix("/api").Subrouter()
-	validationRouter.Use(middleware.EnableCors)
+
 	validationRouter.Use(middleware.ValidateRequestBody)
 	validationRouter.HandleFunc("/users", db.CreateUserHandler).Methods("POST")
 
@@ -84,6 +85,8 @@ func main() {
 	currentUserRouter.HandleFunc("/users/me/", db.GetCurrentUserHandler).Methods("GET")
 	currentUserRouter.HandleFunc("/cart/menu-items", db.CartEndpoint).Methods("GET", "POST", "DELETE")
 	currentUserRouter.HandleFunc("/orders", db.OrderEndpoint).Methods("GET", "POST")
+	currentUserRouter.HandleFunc("/logout", db.LogoutUserHandler).Methods("POST")
+	
 
 	//Define routes that require jwttoken validation middleware
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()
@@ -98,6 +101,7 @@ func main() {
 	userRouter.Handle("/menu-items", middleware.Authorize(http.HandlerFunc(db.ManageMenuHanlder), "Manager", "Delivery Crew", "Customer")).Methods("GET", "POST")
 	userRouter.Handle("/menu-items/{id:[a-zA-Z0-9]*}", middleware.Authorize(http.HandlerFunc(db.ManageSingleItemHandler), "Manager", "Delivery Crew", "Customer")).Methods("GET", "PUT", "PATCH", "DELETE")
 	userRouter.HandleFunc("/cart/menu-items", db.PostMenuItemstoCart).Methods("POST")
+	//userRouter.HandleFunc("/logout", db.LogoutUserHandler).Methods("POST")
 	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.DeleteSingleMenuItem).Methods("DELETE")
 	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.GetSingleleMenuItem).Methods("GET")
 

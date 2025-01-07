@@ -18,19 +18,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-
 func EnableCors(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "*")
-        w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-        if r.Method == "OPTIONS" {
-            return
-        }
-        next.ServeHTTP(w, r)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
-
 
 // ValidateRequestBody is a middleware function to validate request Body
 func ValidateRequestBody(next http.Handler) http.Handler {
@@ -95,9 +93,9 @@ var secretKey = []byte(os.Getenv("session_secret"))
 type contextKey string
 
 // //Define a constant for the context key
- var (
- 	USERNAME contextKey
-	USERROLE contextKey
+var (
+	USERNAME contextKey 
+	USERROLE contextKey 
 )
 
 // type user struct {
@@ -119,7 +117,7 @@ type contextKey string
 //         //     http.Error(w, "Invalid Authorization header format. Expected 'Bearer <token>'", http.StatusUnauthorized)
 //         //     return
 //         // }
-//         secretKey := []byte(os.Getenv("session_secret")) 
+//         secretKey := []byte(os.Getenv("session_secret"))
 
 //         // Parse and validate the token
 //         token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -185,7 +183,10 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Set the username value in the request context
+		fmt.Println(username)
 		ctx := context.WithValue(r.Context(), USERNAME, username)
+		fmt.Println(ctx.Value(USERNAME))
+		fmt.Println("SetCurrentUserMiddleware: Username set in context")
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -222,7 +223,9 @@ func getUsernameFromToken(r *http.Request) (string, error) {
 	if !ok {
 		return "", errors.New("missing or invalid 'username' field in claims")
 	}
-
+	fmt.Printf("Token string: %s\n", tokenString)
+	fmt.Printf("Claims: %v\n", claims)
+	fmt.Println(username)
 	return username, nil
 }
 
@@ -245,34 +248,6 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 			w.Write([]byte("Access Denied; Please check the access token"))
 			return
 		}
-		// // Extract claims from the token
-		// claims, ok := token.Claims.(jwt.MapClaims)
-		// if !ok {
-		// 	w.WriteHeader(http.StatusForbidden)
-		// 	w.Write([]byte("Invalid token claims"))
-		// 	return
-		// }
-		// // Extract the "name" claim (as a string)
-		// name, ok := claims["username"].(string)
-		// if !ok {
-		// 	w.WriteHeader(http.StatusForbidden)
-		// 	w.Write([]byte("Missing or invalid 'name' field in claims"))
-		// 	return
-		// }
-
-		// userToken, err := findTokenByUsername(name)
-		// if err != nil {
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	w.Write([]byte("Error finding user token: " + err.Error()))
-		// 	return
-		// }
-
-		// if userToken != tokenString {
-		// 	w.WriteHeader(http.StatusForbidden)
-		// 	w.Write([]byte("Access forbidden; Incorrect token"))
-		// 	return
-
-		// }
 		next.ServeHTTP(w, r)
 
 	})
@@ -304,7 +279,7 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
 		}
 
-		ctx := context.WithValue(r.Context(), USERROLE, userRole)
+		ctx := context.WithValue(r.Context(), USERROLE	, userRole)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))

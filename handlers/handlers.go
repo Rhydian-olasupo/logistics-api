@@ -25,15 +25,17 @@ import (
 )
 
 type DB struct {
-	Collection             *mongo.Collection
-	TokenCollection        *mongo.Collection
-	MenuItemCollection     *mongo.Collection
-	UserGroup              *mongo.Collection
-	CategoryCollection     *mongo.Collection
-	CartCollection         *mongo.Collection
-	OrderItemCollection    *mongo.Collection
-	OrdersCollection       *mongo.Collection
-	RefreshTokenCollection *mongo.Collection
+	Collection               *mongo.Collection
+	TokenCollection          *mongo.Collection
+	MenuItemCollection       *mongo.Collection
+	UserGroup                *mongo.Collection
+	CategoryCollection       *mongo.Collection
+	CartCollection           *mongo.Collection
+	OrderItemCollection      *mongo.Collection
+	OrdersCollection         *mongo.Collection
+	RefreshTokenCollection   *mongo.Collection
+	TokenBlacklistCollection *mongo.Collection
+	AuditLogCollection       *mongo.Collection
 }
 
 // UserWithHash extends User to include PasswordHash for writing to the database.
@@ -369,7 +371,7 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate a new access token
 	newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": username,
-		"exp":      time.Now().Add(15 * time.Minute).Unix(),
+		"exp":      time.Now().Add(1 * time.Hour).Unix(),
 		"iat":      time.Now().Unix(),
 	})
 
@@ -399,10 +401,72 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(respJSON)
 }
 
+//LogoutUserhandler handles requests to logout user
+
+func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve username from context
+	username, ok := r.Context().Value("username").(string)
+	fmt.Println(username)
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
+
+	// MongoDB client and context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	//Blacklist the access token
+
+	accessToken := r.Header.Get("token")
+
+	if accessToken != "" {
+		blacklistToken := bson.M{"token": accessToken, "expiresAt": time.Now().Add(time.Hour * 1).Unix()}
+		_, err := db.TokenBlacklistCollection.InsertOne(ctx, blacklistToken)
+		if err != nil {
+			http.Error(w, "Failed to blacklist token", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Delete refresh token from the database
+	result, err := db.RefreshTokenCollection.DeleteOne(ctx, bson.M{"username": username})
+	if err != nil {
+		http.Error(w, "Failed to delete refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	if result.DeletedCount == 0 {
+		http.Error(w, "No active session found", http.StatusNotFound)
+		return
+	}
+
+	//Log the logut operation for auditing
+
+	logoutLog := bson.M{"username": username, "timestamp": time.Now().Unix(), "operation": "logout", "ip": r.RemoteAddr}
+
+	_, err = db.AuditLogCollection.InsertOne(ctx, logoutLog)
+
+	if err != nil {
+		http.Error(w, "Failed to log the logout operation", http.StatusInternalServerError)
+		return
+	}
+
+	// Send success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "User logged out successfully"})
+
+}
+
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username := r.Context().Value("username").(string)
-	fmt.Println(username)
+	username, ok:= r.Context().Value("username").(string)
+	if !ok || username == "" {
+        http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
+        return
+    }
+    fmt.Println("This is the user name:", username)
 
 	// Query database for user details
 	var user models.SingleUser
@@ -561,7 +625,7 @@ func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := r.Context().Value("userrole").(string)
 	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
