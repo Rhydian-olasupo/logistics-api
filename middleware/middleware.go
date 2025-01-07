@@ -93,9 +93,9 @@ var secretKey = []byte(os.Getenv("session_secret"))
 type contextKey string
 
 // //Define a constant for the context key
-var (
-	USERNAME contextKey 
-	USERROLE contextKey 
+const (
+	USERNAME contextKey = "username"
+	USERROLE contextKey = "userrole"
 )
 
 // type user struct {
@@ -189,7 +189,7 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		fmt.Println("SetCurrentUserMiddleware: Username set in context")
 
 		// Call the next handler in the chain with the modified context
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(ctx.Value(USERNAME).(context.Context)))
 	})
 }
 
