@@ -82,7 +82,8 @@ func main() {
 	// Define routes that require current user middleware
 	currentUserRouter := mainRouter.PathPrefix("/api").Subrouter()
 	currentUserRouter.Use(middleware.SetCurrentUserMiddleware)
-	currentUserRouter.HandleFunc("/user/me/", db.GetCurrentUserHandler).Methods("GET")
+	currentUserRouter.Handle("/user/me/", middleware.SetCurrentUserMiddleware(http.HandlerFunc(db.GetCurrentUserHandler))).Methods("GET")
+	//currentUserRouter.HandleFunc("/user/me/", db.GetCurrentUserHandler).Methods("GET")
 	currentUserRouter.HandleFunc("/cart/menu-items", db.CartEndpoint).Methods("GET", "POST", "DELETE")
 	currentUserRouter.HandleFunc("/orders", db.OrderEndpoint).Methods("GET", "POST")
 	currentUserRouter.HandleFunc("/logout", db.LogoutUserHandler).Methods("POST")

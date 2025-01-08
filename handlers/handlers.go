@@ -467,6 +467,10 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
+	// Log the full request context
+	fmt.Printf("Handler: Request context: %+v\n", r.Context())
+
+
 	username, ok := r.Context().Value(USERNAME).(string)
 	if !ok || username == "" {
 		http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
