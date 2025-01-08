@@ -44,6 +44,12 @@ type DB struct {
 // 	PasswordHash string `json:"password" bson:"password"` // Replaces the "password" field in the collection
 // }
 
+type contextKey string
+const (
+	USERNAME contextKey = "USERNAME"
+	USERROLE contextKey = "USERROLE"
+)
+
 // Save user with flat structure
 type UserFlat struct {
 	ID           interface{} `json:"id" bson:"_id,omitempty"`
@@ -461,12 +467,12 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username, ok:= r.Context().Value("USERNAME").(string)
+	username, ok := r.Context().Value(USERNAME).(string)
 	if !ok || username == "" {
-        http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
-        return
-    }
-    fmt.Println("This is the user name:", username)
+		http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
+		return
+	}
+	fmt.Println("This is the user name:", username)
 
 	// Query database for user details
 	var user models.SingleUser

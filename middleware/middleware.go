@@ -94,8 +94,8 @@ type contextKey string
 
 // //Define a constant for the context key
 const (
-	USERNAME contextKey = "username"
-	USERROLE contextKey = "userrole"
+	USERNAME contextKey = "USERNAME"
+	USERROLE contextKey = "USERROLE"
 )
 
 // type user struct {
@@ -189,7 +189,14 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		fmt.Println("SetCurrentUserMiddleware: Username set in context")
 
 		// Call the next handler in the chain with the modified context
-		next.ServeHTTP(w, r.WithContext(ctx.Value(USERNAME).(context.Context)))
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+		if ctxValue, ok := ctx.Value(USERNAME).(string); ok {
+            fmt.Printf("Middleware: Username '%s' still in context after next handler execution\n", ctxValue)
+        } else {
+            fmt.Println("Middleware: Username missing from context after next handler execution")
+        }
+
 	})
 }
 
@@ -279,7 +286,7 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
 		}
 
-		ctx := context.WithValue(r.Context(), USERROLE	, userRole)
+		ctx := context.WithValue(r.Context(), USERROLE, userRole)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
