@@ -45,6 +45,7 @@ type DB struct {
 // }
 
 type contextKey string
+
 var (
 	USERNAME contextKey
 	USERROLE contextKey
@@ -467,16 +468,7 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	// Log the full request context
-	fmt.Printf("Handler: Request context: %+v\n", r.Context())
-
-
-	username, ok := r.Context().Value("username").(string)
-	if !ok || username == "" {
-		http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
-		return
-	}
-	fmt.Println("This is the user name:", username)
+	username, _ := r.Context().Value("username").(string)
 
 	// Query database for user details
 	var user models.SingleUser

@@ -18,17 +18,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// func EnableCors(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		w.Header().Set("Access-Control-Allow-Origin", "*")
-// 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-// 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-// 		if r.Method == "OPTIONS" {
-// 			return
-// 		}
-// 		next.ServeHTTP(w, r)
-// 	})
-// }
+func EnableCors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // ValidateRequestBody is a middleware function to validate request Body
 func ValidateRequestBody(next http.Handler) http.Handler {
@@ -183,22 +183,9 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Set the username value in the request context
-		fmt.Println(username)
 		ctx := context.WithValue(r.Context(), "username", username)
-		fmt.Println(ctx.Value("username"))
-		fmt.Println("SetCurrentUserMiddleware: Username set in context")
-
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
-
-		if ctxValue, ok := ctx.Value("username").(string); ok {
-            fmt.Printf("Middleware: Username '%s' still in context after next handler execution\n", ctxValue)
-        } else {
-            fmt.Println("Middleware: Username missing from context after next handler execution")
-        }
-
-		fmt.Printf("Middleware: Headers: %+v\n", r.Header)
-		fmt.Printf("Middleware: Context: %+v\n", r.Context())
 
 	})
 }
@@ -233,9 +220,6 @@ func getUsernameFromToken(r *http.Request) (string, error) {
 	if !ok {
 		return "", errors.New("missing or invalid 'username' field in claims")
 	}
-	fmt.Printf("Token string: %s\n", tokenString)
-	fmt.Printf("Claims: %v\n", claims)
-	fmt.Println(username)
 	return username, nil
 }
 
