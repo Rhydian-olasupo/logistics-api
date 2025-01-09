@@ -45,9 +45,9 @@ type DB struct {
 // }
 
 type contextKey string
-const (
-	USERNAME contextKey = "USERNAME"
-	USERROLE contextKey = "USERROLE"
+var (
+	USERNAME contextKey
+	USERROLE contextKey
 )
 
 // Save user with flat structure
@@ -471,7 +471,7 @@ func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Handler: Request context: %+v\n", r.Context())
 
 
-	username, ok := r.Context().Value(USERNAME).(string)
+	username, ok := r.Context().Value("username").(string)
 	if !ok || username == "" {
 		http.Error(w, "Unauthorized: Missing username in context", http.StatusUnauthorized)
 		return

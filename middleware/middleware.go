@@ -90,13 +90,13 @@ func ValidateRequestBody(next http.Handler) http.Handler {
 var secretKey = []byte(os.Getenv("session_secret"))
 
 // // Define a custom type for context key
-type contextKey string
+// type contextKey string
 
-// //Define a constant for the context key
-const (
-	USERNAME contextKey = "USERNAME"
-	USERROLE contextKey = "USERROLE"
-)
+// // //Define a constant for the context key
+// const (
+// 	USERNAME contextKey = "USERNAME"
+// 	USERROLE contextKey = "USERROLE"
+// )
 
 // type user struct {
 // 	Username string `json:"username" bson:"username"`
@@ -184,18 +184,21 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 
 		// Set the username value in the request context
 		fmt.Println(username)
-		ctx := context.WithValue(r.Context(), USERNAME, username)
-		fmt.Println(ctx.Value(USERNAME))
+		ctx := context.WithValue(r.Context(), "username", username)
+		fmt.Println(ctx.Value("username"))
 		fmt.Println("SetCurrentUserMiddleware: Username set in context")
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
 
-		if ctxValue, ok := ctx.Value(USERNAME).(string); ok {
+		if ctxValue, ok := ctx.Value("username").(string); ok {
             fmt.Printf("Middleware: Username '%s' still in context after next handler execution\n", ctxValue)
         } else {
             fmt.Println("Middleware: Username missing from context after next handler execution")
         }
+
+		fmt.Printf("Middleware: Headers: %+v\n", r.Header)
+		fmt.Printf("Middleware: Context: %+v\n", r.Context())
 
 	})
 }
@@ -286,7 +289,7 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
 		}
 
-		ctx := context.WithValue(r.Context(), USERROLE, userRole)
+		ctx := context.WithValue(r.Context(),"userrole", userRole)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
