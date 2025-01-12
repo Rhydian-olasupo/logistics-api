@@ -1042,6 +1042,7 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Calculate the price
+	//Float the unit price not the quantity -- Fix
 	price := float64(quantity) * unitprice
 
 	// Get the user ID from the username
@@ -1071,7 +1072,7 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := db.CartCollection.InsertOne(ctx, cart)
+	_, err = db.CartCollection.InsertOne(ctx, cart)
 	if err != nil {
 		http.Error(w, "Failed to add menu item to cart", http.StatusInternalServerError)
 		return
@@ -1080,8 +1081,8 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	// Respond with the ID of the newly inserted cart item
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully /n"})
-	json.NewEncoder(w).Encode(result.InsertedID)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully"})
+	// json.NewEncoder(w).Encode(result.InsertedID)
 }
 
 func getUserIDFromUsername(username string) (string, error) {
@@ -1189,7 +1190,7 @@ func (db *DB) GetCartItemsForUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonBytes)
 }
 
-// Function to delete menu items from the menu collection
+// Endpoint to delete menu items from the menu collection
 func (db *DB) DeleteMenuItemsFromCart(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value("username").(string)
 
@@ -1199,7 +1200,7 @@ func (db *DB) DeleteMenuItemsFromCart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	fmt.Println(userID)
+	// fmt.Println(userID)
 	id, _ := primitive.ObjectIDFromHex(userID)
 	filter := bson.M{"user": id}
 	_, err = db.CartCollection.DeleteMany(context.TODO(), filter)
@@ -1384,3 +1385,4 @@ func (db *DB) OrderEndpoint(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Request Method not Accepted", http.StatusBadRequest)
 	}
 }
+
