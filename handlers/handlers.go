@@ -38,18 +38,13 @@ type DB struct {
 	AuditLogCollection       *mongo.Collection
 }
 
-// UserWithHash extends User to include PasswordHash for writing to the database.
-// type UserWithHash struct {
-// 	models.User
-// 	PasswordHash string `json:"password" bson:"password"` // Replaces the "password" field in the collection
-// }
 
-type contextKey string
+// type contextKey string
 
-var (
-	USERNAME contextKey
-	USERROLE contextKey
-)
+// var (
+// 	USERNAME contextKey
+// 	USERROLE contextKey
+// )
 
 // Save user with flat structure
 type UserFlat struct {
@@ -413,7 +408,6 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
 	username, ok := r.Context().Value("username").(string)
-	fmt.Println(username)
 	if !ok {
 		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
 		return
@@ -428,7 +422,7 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	accessToken := r.Header.Get("token")
 
 	if accessToken != "" {
-		blacklistToken := bson.M{"token": accessToken, "expiresAt": time.Now().Add(time.Hour * 1).Unix()}
+		blacklistToken := bson.M{"token": accessToken, "expiresAt": time.Now().Add(time.Second * 60).Unix()}
 		_, err := db.TokenBlacklistCollection.InsertOne(ctx, blacklistToken)
 		if err != nil {
 			http.Error(w, "Failed to blacklist token", http.StatusInternalServerError)
@@ -506,7 +500,6 @@ func (db *DB) AssignGroupHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := db.UserGroup.InsertOne(context.TODO(), bson.M{"name": req.Name, "group": req.Group})
 	if err != nil {
 		http.Error(w, "Failed to assign group to user", http.StatusInternalServerError)
-		log.Printf("Failed to assign group to user: %v", err)
 		return
 	}
 
@@ -541,7 +534,7 @@ func (db *DB) ManageDeliveryHanlder(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetAllDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
 	//Define a slice to store all delivery crew
-	var DeliveryCrews []struct {
+	var DeliveryCrew []struct {
 		Name  string `json:"name" bson:"name"`
 		Group string `json:"group" bson:"group"`
 	}
@@ -562,20 +555,20 @@ func (db *DB) GetAllDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if err := cursor.Decode(&delivery_crew); err != nil {
-			http.Error(w, "Fialed to decode delivery crew", http.StatusInternalServerError)
+			http.Error(w, "Failed to decode delivery crew", http.StatusInternalServerError)
 			return
 		}
 
-		DeliveryCrews = append(DeliveryCrews, delivery_crew)
+		DeliveryCrew = append(DeliveryCrew, delivery_crew)
 	}
 
 	if err := cursor.Err(); err != nil {
-		http.Error(w, "Erroe while iterating over Delivery Crews", http.StatusInternalServerError)
+		http.Error(w, "Error while iterating over Delivery Crews", http.StatusInternalServerError)
 		return
 	}
 
 	//Encode the resutl as JSON and write to response
-	jsonBytes, err := json.Marshal(DeliveryCrews)
+	jsonBytes, err := json.Marshal(DeliveryCrew)
 	if err != nil {
 		http.Error(w, " Failed to encode Delivery Crew to JSON", http.StatusInternalServerError)
 		return
@@ -628,7 +621,6 @@ func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userrole").(string)
-	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
 		err := r.ParseForm()
@@ -651,7 +643,6 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 			_, err = db.UserGroup.InsertOne(context.TODO(), bson.M{"name": username, "group": "Manager"})
 			if err != nil {
 				http.Error(w, "Failed to assign to Delivery Crew", http.StatusBadRequest)
-				log.Printf("Failed to assign to Delivery Crew: %v", err)
 				return
 			}
 		}
@@ -664,7 +655,6 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 
 func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
-	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
 		err := r.ParseForm()
@@ -700,9 +690,9 @@ func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Req
 }
 
 // Delete the user from the Group they belong
+// There is a better way to write this, I will come back to this.
 func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
-	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
 		vars := mux.Vars(r)
@@ -716,13 +706,13 @@ func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			if data.Group != group {
-				http.Error(w, "Cant Delete User as it does not belong in the Delivery Group", http.StatusBadRequest)
+				http.Error(w, "Cant Delete User as it does not belong in the Manager Group", http.StatusBadRequest)
 				return
 			} else {
 				filter := bson.M{"_id": objectID}
 				_, err := db.UserGroup.DeleteOne(context.TODO(), filter)
 				if err != nil {
-					log.Println("Cant delte database record")
+					log.Println("Cant delete database record")
 				}
 			}
 			w.WriteHeader(http.StatusOK)
@@ -737,7 +727,6 @@ func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
-	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
 		vars := mux.Vars(r)
@@ -787,7 +776,6 @@ func (db *DB) PostItemCategory(w http.ResponseWriter, r *http.Request) {
 func (db *DB) GetAllItemCategories(w http.ResponseWriter, r *http.Request) {
 	var categories []models.Category
 
-	// Find all documents where group is "Manager"
 	cursor, err := db.CategoryCollection.Find(context.TODO(), bson.M{})
 	if err != nil {
 		http.Error(w, "Failed to fetch categories", http.StatusInternalServerError)
@@ -830,11 +818,11 @@ func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
 	userRole := r.Context().Value("userRole").(string)
-	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
 		var menuitem models.MenuItem
 		postBody, _ := io.ReadAll(r.Body)
+		//This is me using the categoryID but it should be the category name/title. Refactor later
 		var categoryID primitive.ObjectID
 		menuitem.Category = categoryID
 		json.Unmarshal(postBody, &menuitem)
