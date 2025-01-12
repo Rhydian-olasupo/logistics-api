@@ -849,7 +849,7 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	defaultPageSize := 5
 	defaultPage := 1
 
-	//Calculate pagination paramters
+	//Calculate pagination parameters
 	pageSize := defaultPageSize
 	page := defaultPage
 
@@ -861,6 +861,7 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	menuItemsWithCategory := []MenuItemWithCategory{}
+	
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -869,9 +870,9 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	cursor, err := db.MenuItemCollection.Aggregate(ctx, mongo.Pipeline{
 		bson.D{
 			{Key: "$lookup", Value: bson.D{
-				{Key: "from", Value: "Category"},       // Name of the category collection
-				{Key: "localField", Value: "category"}, // Field in the local collection to match
-				{Key: "foreignField", Value: "_id"},    // Field in the foreign collection to match
+				{Key: "from", Value: "Category"},       // Name of the collection to lookup, incase this is the category collection
+				{Key: "localField", Value: "category"}, // Field in the local collection to match,this means value to look for from the document in the collection
+				{Key: "foreignField", Value: "_id"},    // Field in the foreign collection to match, the foreign key  to the Menuitem collection
 				{Key: "as", Value: "category"},         // Alias for the joined field in the output documents
 			}},
 		},
@@ -926,6 +927,7 @@ func (db *DB) GetSingleleMenuItem(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(userRole)
 	var singleItem models.MenuItem
 	vars := mux.Vars(r)
+	//Still getting with ID , should be getting with name
 	objectID, _ := primitive.ObjectIDFromHex(vars["id"])
 	filter := bson.M{"_id": objectID}
 	err := db.MenuItemCollection.FindOne(context.TODO(), filter).Decode(&singleItem)
