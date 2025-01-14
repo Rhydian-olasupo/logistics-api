@@ -280,34 +280,6 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 	})
 }
 
-// Function to query MongoDb collection to find user's token by username
-// func findTokenByUsername(username string) (string, error) {
-// 	// Establish MongoDB connection with context
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
-// 	defer cancel()
-
-// 	client, err := utils.InitMongoClient()
-// 	if err != nil {
-// 		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
-// 	}
-// 	defer client.Disconnect(ctx)
-
-// 	// Get collection reference
-// 	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
-
-// 	// Query and decode result
-// 	var result struct {
-// 		Token string `json:"tokens" bson:"tokens"`
-// 	}
-// 	err = tokensCollection.FindOne(ctx, bson.M{"username": username}).Decode(&result)
-// 	if err != nil {
-// 		if err == mongo.ErrNoDocuments {
-// 			return "", fmt.Errorf("token not found for username: %s", username)
-// 		}
-// 		return "", fmt.Errorf("error finding token: %w", err) // Wrap errors for better handling
-// 	}
-
-// 	fmt.Println(result.Token)
 
 // 	return result.Token, nil
 // }
