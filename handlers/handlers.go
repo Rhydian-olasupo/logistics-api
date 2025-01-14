@@ -1329,12 +1329,6 @@ func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert the user ID string to primitive.ObjectID
-	/*userID, err := primitive.ObjectIDFromHex(userIDstr)
-	if err != nil {
-		http.Error(w, "Cant convert UserID to primitive.ObjectID", http.StatusBadRequest)
-		return
-	}*/
 
 	id, _ := primitive.ObjectIDFromHex(userIDstr)
 
