@@ -1,5 +1,32 @@
 package handlers
 
+// Package handlers provides HTTP handler functions for the logistics API.
+// It includes functions for handling requests, processing data, and interacting
+// with the database. The package also integrates with various third-party
+// libraries for JWT authentication, routing, metrics collection, and telemetry.
+//
+// The following libraries are imported:
+// - context: for managing request contexts.
+// - encoding/json: for encoding and decoding JSON data.
+// - fmt: for formatted I/O operations.
+// - io: for basic I/O operations.
+// - log: for logging messages.
+// - net/http: for HTTP client and server implementations.
+// - os: for interacting with the operating system.
+// - strconv: for converting strings to other types.
+// - time: for time-related functions.
+// - go_trial/gorest/models: for data models.
+// - go_trial/gorest/utils: for utility functions.
+// - github.com/golang-jwt/jwt: for JWT authentication.
+// - github.com/gorilla/mux: for HTTP request routing.
+// - github.com/prometheus/client_golang/prometheus: for metrics collection.
+// - go.mongodb.org/mongo-driver/bson: for BSON encoding and decoding.
+// - go.mongodb.org/mongo-driver/bson/primitive: for MongoDB primitive types.
+// - go.mongodb.org/mongo-driver/mongo: for MongoDB client and server interactions.
+// - go.opentelemetry.io/otel: for OpenTelemetry integration.
+// - golang.org/x/crypto/bcrypt: for password hashing.
+
+
 import (
 	"context"
 	"encoding/json"
