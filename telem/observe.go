@@ -1,3 +1,26 @@
+// Package telem provides functionality for initializing and managing
+// telemetry, including metrics and tracing, using OpenTelemetry and Prometheus.
+//
+// InitMetrics initializes a Prometheus metrics exporter and starts an HTTP
+// server to serve the metrics at the /metrics endpoint. It returns a function
+// to shut down the metrics server and the meter provider.
+//
+// Parameters:
+// - service: The name of the service for which metrics are being collected.
+//
+// Returns:
+// - ShutdownMetrics: A function to shut down the metrics server and meter provider.
+// - error: An error if initialization fails.
+//
+// InitTracing initializes tracing with an OTLP exporter and sets up a tracer
+// provider. It returns a function to shut down the tracer provider.
+//
+// Parameters:
+// - service: The name of the service for which tracing is being collected.
+//
+// Returns:
+// - ShutdownTracing: A function to shut down the tracer provider.
+// - error: An error if initialization fails.
 package telem
 
 import (
