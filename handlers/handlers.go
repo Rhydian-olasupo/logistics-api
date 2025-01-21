@@ -3,7 +3,7 @@ package handlers
 // Package handlers provides HTTP handler functions for the logistics API.
 // It includes functions for handling requests, processing data, and interacting
 // with the database. The package also integrates with various third-party
-// libraries for JWT authentication, routing, metrics collection, and telemetry.
+// libraries for JWT authentication, routing, metrics collection, and telemetry.help create the folder and the files
 //
 // The following libraries are imported:
 // - context: for managing request contexts.
@@ -49,7 +49,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/stripe/stripe-go/v72"
+    "github.com/stripe/stripe-go/v72/charge"
 )
+
+
 
 type DB struct {
 	Collection               *mongo.Collection
@@ -1407,3 +1411,45 @@ func (db *DB) OrderEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type PaymentRequest struct {
+    OrderID     string `json:"order_id"`
+    Amount      int64  `json:"amount"`
+    Currency    string `json:"currency"`
+    SourceToken string `json:"source_token"`
+}
+
+type PaymentResponse struct {
+    Status  string `json:"status"`
+    Message string `json:"message"`
+}
+
+func (db *DB) ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
+    var paymentReq PaymentRequest
+    err := json.NewDecoder(r.Body).Decode(&paymentReq)
+    if err != nil {
+        http.Error(w, "Invalid request payload", http.StatusBadRequest)
+        return
+    }
+
+    stripe.Key = os.Getenv("************")
+
+    chargeParams := &stripe.ChargeParams{
+        Amount:   stripe.Int64(paymentReq.Amount),
+        Currency: stripe.String(paymentReq.Currency),
+        Source:   &stripe.SourceParams{Token: stripe.String(paymentReq.SourceToken)},
+    }
+    chargeParams.AddMetadata("order_id", paymentReq.OrderID)
+
+    _, err = charge.New(chargeParams)
+    if err != nil {
+        http.Error(w, "Failed to process payment", http.StatusInternalServerError)
+        return
+    }
+
+    paymentResp := PaymentResponse{
+        Status:  "success",
+        Message: "Payment processed successfully",
+    }
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(paymentResp)
+}
