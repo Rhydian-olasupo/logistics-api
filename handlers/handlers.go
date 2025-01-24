@@ -26,7 +26,6 @@ package handlers
 // - go.opentelemetry.io/otel: for OpenTelemetry integration.
 // - golang.org/x/crypto/bcrypt: for password hashing.
 
-
 import (
 	"context"
 	"encoding/json"
@@ -44,16 +43,14 @@ import (
 	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/charge"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/stripe/stripe-go/v72"
-    "github.com/stripe/stripe-go/v72/charge"
 )
-
-
 
 type DB struct {
 	Collection               *mongo.Collection
@@ -68,7 +65,6 @@ type DB struct {
 	TokenBlacklistCollection *mongo.Collection
 	AuditLogCollection       *mongo.Collection
 }
-
 
 // type contextKey string
 
@@ -892,7 +888,6 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	menuItemsWithCategory := []MenuItemWithCategory{}
-	
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1299,6 +1294,11 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resp.Body == nil {
+		http.Error(w, "Response body is nil", http.StatusInternalServerError)
+		return
+	}
+
 	err = json.NewDecoder(resp.Body).Decode(&cartItems)
 	if err != nil {
 		http.Error(w, "Failed to decode cart items", http.StatusInternalServerError)
@@ -1365,7 +1365,6 @@ func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	id, _ := primitive.ObjectIDFromHex(userIDstr)
 
 	// Query Cart collection for given userID
@@ -1417,98 +1416,97 @@ func (db *DB) OrderEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 type PaymentRequest struct {
-    OrderID     string `json:"order_id"`
-    Amount      int64  `json:"amount"`
-    Currency    string `json:"currency"`
-    SourceToken string `json:"source_token"`
+	OrderID string `json:"order_id"`
+	// Amount      int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	SourceToken string `json:"source_token"`
 }
 
 type PaymentResponse struct {
-    Status  string `json:"status"`
-    Message string `json:"message"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
-func (db *DB) ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
-    var paymentReq PaymentRequest
-    err := json.NewDecoder(r.Body).Decode(&paymentReq)
-    if err != nil {
-        http.Error(w, "Invalid request payload", http.StatusBadRequest)
-        return
-    }
+// func (db *DB) ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
+//     var paymentReq PaymentRequest
+//     err := json.NewDecoder(r.Body).Decode(&paymentReq)
+//     if err != nil {
+//         http.Error(w, "Invalid request payload", http.StatusBadRequest)
+//         return
+//     }
 
-    stripe.Key = os.Getenv("************")
+//     stripe.Key = os.Getenv("************")
 
-    chargeParams := &stripe.ChargeParams{
-        Amount:   stripe.Int64(paymentReq.Amount),
-        Currency: stripe.String(paymentReq.Currency),
-        Source:   &stripe.SourceParams{Token: stripe.String(paymentReq.SourceToken)},
-    }
-    chargeParams.AddMetadata("order_id", paymentReq.OrderID)
+//     chargeParams := &stripe.ChargeParams{
+//         Amount:   stripe.Int64(paymentReq.Amount),
+//         Currency: stripe.String(paymentReq.Currency),
+//         Source:   &stripe.SourceParams{Token: stripe.String(paymentReq.SourceToken)},
+//     }
+//     chargeParams.AddMetadata("order_id", paymentReq.OrderID)
 
-    _, err = charge.New(chargeParams)
-    if err != nil {
-        http.Error(w, "Failed to process payment", http.StatusInternalServerError)
-        return
-    }
+//     _, err = charge.New(chargeParams)
+//     if err != nil {
+//         http.Error(w, "Failed to process payment", http.StatusInternalServerError)
+//         return
+//     }
 
-    paymentResp := PaymentResponse{
-        Status:  "success",
-        Message: "Payment processed successfully",
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(paymentResp)
-}
-
+//     paymentResp := PaymentResponse{
+//         Status:  "success",
+//         Message: "Payment processed successfully",
+//     }
+//     w.Header().Set("Content-Type", "application/json")
+//     json.NewEncoder(w).Encode(paymentResp)
+// }
 
 func (db *DB) ProcessPaymentHandler1(w http.ResponseWriter, r *http.Request) {
-    var paymentReq PaymentRequest
-    err := json.NewDecoder(r.Body).Decode(&paymentReq)
-    if err != nil {
-        http.Error(w, "Invalid request payload", http.StatusBadRequest)
-        return
-    }
+	var paymentReq PaymentRequest
+	err := json.NewDecoder(r.Body).Decode(&paymentReq)
+	if err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
 
-    // Retrieve the order details
-    orderID, err := primitive.ObjectIDFromHex(paymentReq.OrderID)
-    if err != nil {
-        http.Error(w, "Invalid order ID", http.StatusBadRequest)
-        return
-    }
+	// Retrieve the order details
+	orderID, err := primitive.ObjectIDFromHex(paymentReq.OrderID)
+	if err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
 
-    var order models.Order
-    err = db.OrdersCollection.FindOne(context.TODO(), bson.M{"_id": orderID}).Decode(&order)
-    if err != nil {
-        http.Error(w, "Order not found", http.StatusNotFound)
-        return
-    }
+	var order models.Order
+	err = db.OrdersCollection.FindOne(context.TODO(), bson.M{"_id": orderID}).Decode(&order)
+	if err != nil {
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
 
-    // Process the payment using Stripe
-    stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
+	// Process the payment using Stripe
+	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
 
-    chargeParams := &stripe.ChargeParams{
-        Amount:   stripe.Int64(int64(order.Total * 100)), // Convert to cents
-        Currency: stripe.String(paymentReq.Currency),
-        Source:   &stripe.SourceParams{Token: stripe.String(paymentReq.SourceToken)},
-    }
-    chargeParams.AddMetadata("order_id", paymentReq.OrderID)
+	chargeParams := &stripe.ChargeParams{
+		Amount:   stripe.Int64(int64(order.Total * 100)), // Convert to cents
+		Currency: stripe.String(paymentReq.Currency),
+		Source:   &stripe.SourceParams{Token: stripe.String(paymentReq.SourceToken)},
+	}
+	chargeParams.AddMetadata("order_id", paymentReq.OrderID)
 
-    _, err = charge.New(chargeParams)
-    if err != nil {
-        http.Error(w, "Failed to process payment", http.StatusInternalServerError)
-        return
-    }
+	_, err = charge.New(chargeParams)
+	if err != nil {
+		http.Error(w, "Failed to process payment", http.StatusInternalServerError)
+		return
+	}
 
-    // Update the order status to paid
-    _, err = db.OrdersCollection.UpdateOne(context.TODO(), bson.M{"_id": orderID}, bson.M{"$set": bson.M{"status": true}})
-    if err != nil {
-        http.Error(w, "Failed to update order status", http.StatusInternalServerError)
-        return
-    }
+	// Update the order status to paid
+	_, err = db.OrdersCollection.UpdateOne(context.TODO(), bson.M{"_id": orderID}, bson.M{"$set": bson.M{"status": true}})
+	if err != nil {
+		http.Error(w, "Failed to update order status", http.StatusInternalServerError)
+		return
+	}
 
-    paymentResp := PaymentResponse{
-        Status:  "success",
-        Message: "Payment processed successfully",
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(paymentResp)
+	paymentResp := PaymentResponse{
+		Status:  "success",
+		Message: "Payment processed successfully",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(paymentResp)
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -68,7 +69,7 @@ func TestMain(m *testing.M) {
 
 func TestCreateUserHandler(t *testing.T) {
 	// Create a new HTTP request
-	user := models.User{Name: "testuser",Email: "testuser@rhyda.com",Password: "password123"}
+	user := models.User{Name: "testuser", Email: "testuser@rhyda.com", Password: "password123"}
 	body, _ := json.Marshal(user)
 	req, err := http.NewRequest("POST", "api/users", bytes.NewBuffer(body))
 	if err != nil {
@@ -100,13 +101,16 @@ func TestCreateUserHandler(t *testing.T) {
 	}
 }
 
-
 func TestLoginTokenHandler(t *testing.T) {
 	// Add a test user to the database to simulate an existing user and create an access token
 	// Insert a test user
 	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	user := UserFlat{Name: "testuser", PasswordHash: string(passwordHash)}
-	_, err := db.Collection.InsertOne(context.TODO(), user)
+	result, err := db.Collection.InsertOne(context.TODO(), user)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+	user.ID = result.InsertedID.(primitive.ObjectID)
 	if err != nil {
 		t.Fatalf("Failed to insert test user: %v", err)
 	}
@@ -139,6 +143,88 @@ func TestLoginTokenHandler(t *testing.T) {
 	}
 	if response.AccessToken == "" || response.RefreshToken == "" {
 		t.Errorf("handler returned invalid tokens: %v", response)
+	}
+}
+func TestPlaceNewOrderHandler(t *testing.T) {
+	// Add a test user to the database to simulate an existing user
+	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	user := UserFlat{Name: "testuser", PasswordHash: string(passwordHash)}
+	_, err := db.Collection.InsertOne(context.TODO(), user)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+
+	// Add test items to the cart
+	cartItem := models.Cart{
+		User:       func() primitive.ObjectID { id, _ := primitive.ObjectIDFromHex(user.ID.(string)); return id }(),
+		MenuItem:  "testitem",
+		Quantity:  2,
+		UnitPrice: 10.0,
+		Price:     20.0,
+	}
+	_, err = db.CartCollection.InsertOne(context.TODO(), cartItem)
+	if err != nil {
+		t.Fatalf("Failed to insert cart item: %v", err)
+	}
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("POST", "/api/orders", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req = req.WithContext(context.WithValue(req.Context(), "username", "testuser"))
+	req.Header.Set("token", "test_token")
+
+	// Create a ResponseRecorder to record the response
+	rr := httptest.NewRecorder()
+
+	// Call the handler
+	handler := http.HandlerFunc(db.PlaceNewOrderHandler)
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code
+	if status := rr.Code; status != http.StatusCreated {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusCreated)
+	}
+
+	// Check the response body
+	expected := "Order placed successfully"
+	if rr.Body.String() != expected {
+		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expected)
+	}
+
+	// Verify that the order was created in the database
+	var order models.Order
+	err = db.OrdersCollection.FindOne(context.TODO(), bson.M{"user": user.ID}).Decode(&order)
+	if err != nil {
+		t.Fatalf("Failed to find created order: %v", err)
+	}
+
+	// Verify that the order items were created in the database
+	var orderItems []models.OrderItem
+	cursor, err := db.OrderItemCollection.Find(context.TODO(), bson.M{"order": order.ID})
+	if err != nil {
+		t.Fatalf("Failed to find order items: %v", err)
+	}
+	defer cursor.Close(context.TODO())
+	for cursor.Next(context.TODO()) {
+		var orderItem models.OrderItem
+		if err := cursor.Decode(&orderItem); err != nil {
+			t.Fatalf("Failed to decode order item: %v", err)
+		}
+		orderItems = append(orderItems, orderItem)
+	}
+	if len(orderItems) == 0 {
+		t.Errorf("No order items found for the created order")
+	}
+
+	// Verify that the cart was cleared
+	count, err := db.CartCollection.CountDocuments(context.TODO(), bson.M{"user": user.ID})
+	if err != nil {
+		t.Fatalf("Failed to count cart items: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Cart was not cleared after placing the order")
 	}
 }
 
