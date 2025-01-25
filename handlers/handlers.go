@@ -53,7 +53,7 @@ import (
 )
 
 type DB struct {
-	Collection               *mongo.Collection
+	Collection *mongo.Collection
 	// TokenCollection          *mongo.Collection
 	MenuItemCollection       *mongo.Collection
 	UserGroup                *mongo.Collection
@@ -1123,7 +1123,7 @@ func getUserIDFromUsername(username string) (string, error) {
 	defer client.Disconnect(ctx)
 
 	// Get collection reference
-	IDCollection := utils.GetCollection(client, "testdb", "users")
+	IDCollection := utils.GetCollection(client, "apiDB", "logistics")
 
 	// Query and decode result
 	var result struct {
@@ -1252,7 +1252,6 @@ func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from token or context
-	// Get current user ID from the JWT token
 	username := r.Context().Value("username").(string)
 	userIDstr, err := getUserIDFromUsername(username)
 	if err != nil {
@@ -1299,9 +1298,18 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&cartItems)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, "Failed to decode cart items", http.StatusInternalServerError)
+		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Println(resp.Body)
+
+	err = json.Unmarshal(body, &cartItems)
+
+	if err != nil {
+		http.Error(w, "Failed to unmarshal cart items" +err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1330,7 +1338,7 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	// Insert cart items as order items
 	for _, item := range cartItems {
 		orderItem := models.OrderItem{
-			Order:     primitive.NewObjectID(),
+			Order:     order.ID,
 			MenuItem:  item.MenuItem,
 			Quantity:  item.Quantity,
 			UnitPrice: item.UnitPrice,
