@@ -42,7 +42,7 @@ func main() {
 
 	// Get database collection
 	collection := utils.GetCollection(client, "apiDB", "logistics")
-	tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
+	// tokensCollection := utils.GetCollection(client, "apiDB", "tokens")
 	menuitemscollection := utils.GetCollection(client, "apiDB", "menuitems")
 	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
 	categoryCollection := utils.GetCollection(client, "apiDB", "Category")
@@ -56,7 +56,7 @@ func main() {
 	// Create an instance of your DB
 	db := &handlers.DB{
 		Collection:               collection,
-		TokenCollection:          tokensCollection,
+		// TokenCollection:          tokensCollection,
 		MenuItemCollection:       menuitemscollection,
 		UserGroup:                UserGroupcollection,
 		CategoryCollection:       categoryCollection,

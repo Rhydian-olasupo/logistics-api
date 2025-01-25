@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	// Initialize the DB struct
 	db = &DB{
 		Collection:               client.Database("testdb").Collection("users"),
-		TokenCollection:          client.Database("testdb").Collection("tokens"),
+		// TokenCollection:          client.Database("testdb").Collection("tokens"),
 		MenuItemCollection:       client.Database("testdb").Collection("menuitems"),
 		UserGroup:                client.Database("testdb").Collection("usergroups"),
 		CategoryCollection:       client.Database("testdb").Collection("categories"),
@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 
 	// Clear the collections before running the tests
 	db.Collection.DeleteMany(context.TODO(), bson.M{})
-	db.TokenCollection.DeleteMany(context.TODO(), bson.M{})
+	// db.TokenCollection.DeleteMany(context.TODO(), bson.M{})
 	db.MenuItemCollection.DeleteMany(context.TODO(), bson.M{})
 	db.UserGroup.DeleteMany(context.TODO(), bson.M{})
 	db.CategoryCollection.DeleteMany(context.TODO(), bson.M{})
@@ -149,14 +149,17 @@ func TestPlaceNewOrderHandler(t *testing.T) {
 	// Add a test user to the database to simulate an existing user
 	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	user := UserFlat{Name: "testuser", PasswordHash: string(passwordHash)}
-	_, err := db.Collection.InsertOne(context.TODO(), user)
+	insertResult, err := db.Collection.InsertOne(context.TODO(), user)
 	if err != nil {
 		t.Fatalf("Failed to insert test user: %v", err)
 	}
-
+	
+	// Capture the inserted user ID
+	userID := insertResult.InsertedID.(primitive.ObjectID)
+	
 	// Add test items to the cart
 	cartItem := models.Cart{
-		User:       func() primitive.ObjectID { id, _ := primitive.ObjectIDFromHex(user.ID.(string)); return id }(),
+		User:      userID,
 		MenuItem:  "testitem",
 		Quantity:  2,
 		UnitPrice: 10.0,

@@ -54,7 +54,7 @@ import (
 
 type DB struct {
 	Collection               *mongo.Collection
-	TokenCollection          *mongo.Collection
+	// TokenCollection          *mongo.Collection
 	MenuItemCollection       *mongo.Collection
 	UserGroup                *mongo.Collection
 	CategoryCollection       *mongo.Collection
@@ -1123,7 +1123,7 @@ func getUserIDFromUsername(username string) (string, error) {
 	defer client.Disconnect(ctx)
 
 	// Get collection reference
-	IDCollection := utils.GetCollection(client, "apiDB", "logistics")
+	IDCollection := utils.GetCollection(client, "testdb", "users")
 
 	// Query and decode result
 	var result struct {
