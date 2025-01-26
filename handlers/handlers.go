@@ -1303,13 +1303,13 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
 		return
 	}
-
-	fmt.Println(resp.Body)
-
+	
+	// Log the response body for debugging
+	log.Printf("Response body: %s", string(body))
+	
 	err = json.Unmarshal(body, &cartItems)
-
 	if err != nil {
-		http.Error(w, "Failed to unmarshal cart items" +err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to unmarshal cart items: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

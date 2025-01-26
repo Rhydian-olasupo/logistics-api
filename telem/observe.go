@@ -66,9 +66,9 @@ func InitMetrics(service string) (ShutdownMetrics, error) {
 	)
 	otel.SetMeterProvider(meterProvider)
 
-	srv := &http.Server{Addr: ":8000", Handler: promhttp.Handler()}
+	srv := &http.Server{Addr: ":9000", Handler: promhttp.Handler()}
 	go func() {
-		log.Println("Prometheus metrics server running at :8000/metrics")
+		log.Println("Prometheus metrics server running at :9000/metrics")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start Prometheus metrics server: %v", err)
 		}
