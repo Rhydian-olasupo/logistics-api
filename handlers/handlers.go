@@ -239,96 +239,103 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
-	loginRequests.Inc()
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Invalid Form Data", http.StatusBadRequest)
-		loginRequestsbyStatus.WithLabelValues("Error").Inc()
-		return
-	}
 
-	username := r.PostForm.Get("name")
-	password := r.PostForm.Get("password")
-
-	if username == "" || password == "" {
-		http.Error(w, "Username and Password are required", http.StatusBadRequest)
-		return
-	}
-
-	// MongoDB client and context
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var user UserFlat
-
-	err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			http.Error(w, "User not Found", http.StatusNotFound)
+	if r.Method == http.MethodPost {
+		loginRequests.Inc()
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "Invalid Form Data", http.StatusBadRequest)
 			loginRequestsbyStatus.WithLabelValues("Error").Inc()
 			return
 		}
-		http.Error(w, "Database Error", http.StatusInternalServerError)
-		return
-	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		http.Error(w, "Invalid Credentials", http.StatusBadRequest)
+		username := r.PostForm.Get("name")
+		password := r.PostForm.Get("password")
+
+		if username == "" || password == "" {
+			http.Error(w, "Username and Password are required", http.StatusBadRequest)
+			return
+		}
+
+		// MongoDB client and context
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var user UserFlat
+
+		err = db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&user)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				http.Error(w, "User not Found", http.StatusNotFound)
+				loginRequestsbyStatus.WithLabelValues("Error").Inc()
+				return
+			}
+			http.Error(w, "Database Error", http.StatusInternalServerError)
+			return
+		}
+
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			http.Error(w, "Invalid Credentials", http.StatusBadRequest)
+			loginRequestsbyStatus.WithLabelValues("Error").Inc()
+			return
+		}
+
+		// Password is correct, generate JWT token
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"username": username,
+			"exp":      time.Now().Add(time.Hour * 1).Unix(), // Access token expires in 1 hour
+			"iat":      time.Now().Unix(),
+		})
+		tokenString, err := token.SignedString([]byte(secretKey))
+		if err != nil {
+			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+			loginRequestsbyStatus.WithLabelValues("Error").Inc()
+			return
+		}
+
+		//Generate Refresh Token
+		refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"username": username,
+			"exp":      time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
+			"iat":      time.Now().Unix(),
+			"type":     "refresh",
+		})
+
+		refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
+		if err != nil {
+			http.Error(w, "Failed to generate token "+err.Error(), http.StatusInternalServerError)
+			loginRequestsbyStatus.WithLabelValues("Error").Inc()
+			return
+		}
+
+		//Store refresh token in the database
+		_, err = db.RefreshTokenCollection.InsertOne(ctx, bson.M{
+			"username":     user.Name,
+			"refreshToken": refreshTokenString,
+			"iat":          time.Now().Unix(),
+		})
+		if err != nil {
+			http.Error(w, "Failed to store refresh Token"+err.Error(), http.StatusInternalServerError)
+			loginRequestsbyStatus.WithLabelValues("Error")
+			return
+		}
+
+		// Token generated successfully, send it in the response
+		response := Response{AccessToken: tokenString, RefreshToken: refreshTokenString}
+		respJSON, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(respJSON)
+		loginRequestsbyStatus.WithLabelValues("success").Inc()
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		loginRequestsbyStatus.WithLabelValues("Error").Inc()
 		return
 	}
-
-	// Password is correct, generate JWT token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": username,
-		"exp":      time.Now().Add(time.Hour * 1).Unix(), // Access token expires in 1 hour
-		"iat":      time.Now().Unix(),
-	})
-	tokenString, err := token.SignedString([]byte(secretKey))
-	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-		loginRequestsbyStatus.WithLabelValues("Error").Inc()
-		return
-	}
-
-	//Generate Refresh Token
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": username,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(), // Refresh token expires in 24 hours
-		"iat":      time.Now().Unix(),
-		"type":     "refresh",
-	})
-
-	refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
-	if err != nil {
-		http.Error(w, "Failed to generate token "+err.Error(), http.StatusInternalServerError)
-		loginRequestsbyStatus.WithLabelValues("Error").Inc()
-		return
-	}
-
-	//Store refresh token in the database
-	_, err = db.RefreshTokenCollection.InsertOne(ctx, bson.M{
-		"username":     user.Name,
-		"refreshToken": refreshTokenString,
-		"iat":          time.Now().Unix(),
-	})
-	if err != nil {
-		http.Error(w, "Failed to store refresh Token"+err.Error(), http.StatusInternalServerError)
-		loginRequestsbyStatus.WithLabelValues("Error")
-		return
-	}
-
-	// Token generated successfully, send it in the response
-	response := Response{AccessToken: tokenString, RefreshToken: refreshTokenString}
-	respJSON, err := json.Marshal(response)
-	if err != nil {
-		http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(respJSON)
-	loginRequestsbyStatus.WithLabelValues("success").Inc()
 }
 
 func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
