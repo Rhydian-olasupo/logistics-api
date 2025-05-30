@@ -57,7 +57,7 @@ func main() {
 
 	// Create an instance of your DB
 	db := &handlers.DB{
-		Collection:               collection,
+		Collection: collection,
 		// TokenCollection:          tokensCollection,
 		MenuItemCollection:       menuitemscollection,
 		UserGroup:                UserGroupcollection,
@@ -89,7 +89,6 @@ func main() {
 	currentUserRouter.HandleFunc("/orders", db.OrderEndpoint).Methods("GET", "POST")
 	currentUserRouter.HandleFunc("/logout", db.LogoutUserHandler).Methods("POST")
 
-
 	//Define routes that require jwttoken validation middleware
 	userRouter := mainRouter.PathPrefix("/api").Subrouter()
 	userRouter.Use(middleware.JWTTokenValidationMiddleware)
@@ -110,6 +109,9 @@ func main() {
 	// Initialize Kafka writer for logging
 	logkafka.InitKafkaWriter([]string{"localhost:9092"}, "logs")
 	defer logkafka.CloseKafkaWriter()
+
+	// Start Kafka to Elasticsearch batch pusher in a goroutine
+	go utils.InitKafkaES()
 
 	// Wrap the main router with the logging middleware
 	loggedRouter := logkafka.LoggingMiddleware(mainRouter)
