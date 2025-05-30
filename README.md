@@ -5,6 +5,28 @@
 ![JWT](https://img.shields.io/badge/JWT-black?style=for-the-badge&logo=JSON%20web%20tokens)  
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)  
 
+---
+
+## 🚦 Project Status: In Active Development (May 2025)
+
+This project is currently in active development. Major features have been implemented, including:
+- User authentication and registration (JWT-based, secure password hashing)
+- Role-based access control and group management
+- Menu, cart, and order management endpoints
+- Token refresh and logout functionality
+- Telemetry, observability, and Kafka logging integration
+- Docker and Docker Compose support
+- Flutter mobile frontend for user creation/testing
+
+**Upcoming improvements:**
+- More comprehensive test coverage
+- Enhanced error handling and validation
+- API documentation (Swagger/OpenAPI)
+- Production deployment guides
+
+
+---
+
 ## Overview  
 The **LittleLemonAPI** is a robust and scalable backend solution for managing restaurant operations. Built with GoLang, this API supports:
 - User authentication and registration.
@@ -138,6 +160,8 @@ This will start both the Go API and a MongoDB instance as defined in `docker-com
 - **JWT Authentication**: Secure sessions with token-based authentication.  
 - **Custom Middleware**: Authentication and authorization without external frameworks.  
 - **MongoDB Integration**: Flexible and NoSQL database for dynamic data models.  
+- **Kafka Logging**: Integrated Kafka for event and audit logging.  
+- **ElasticSearch & Kibana**: Support for advanced search, analytics, and real-time monitoring/visualization via ElasticSearch and Kibana.  
 - **Rate Limiting**: API throttling for authenticated and unauthenticated users.  
 - **Sorting and Pagination**: Optimized responses for large datasets.  
 
