@@ -156,9 +156,13 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newUser.Name = r.FormValue("name")
-	newUser.Email = r.FormValue("email")
-	newUser.Password = r.FormValue("password")
+	// Decode JSON body into newUser
+	if err := json.NewDecoder(r.Body).Decode(&newUser); err != nil {
+		http.Error(w, "Invalid JSON body: "+err.Error(), http.StatusBadRequest)
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
+		return
+	}
 
 	if newUser.Name == "" || newUser.Email == "" || newUser.Password == "" {
 		http.Error(w, "All fields (name, email, password) are required", http.StatusBadRequest)

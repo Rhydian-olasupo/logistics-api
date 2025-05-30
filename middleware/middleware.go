@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"go_trial/gorest/utils"
@@ -39,9 +40,9 @@ func ValidateRequestBody(next http.Handler) http.Handler {
 			return
 		}
 
-		// Ensure that the Content-Type header is application/json
+		// Ensure that the Content-Type header is application/json or starts with it
 		contentType := r.Header.Get("Content-Type")
-		if contentType != "application/json" {
+		if !strings.HasPrefix(contentType, "application/json") {
 			http.Error(w, "Content-Type header must be application/json", http.StatusUnsupportedMediaType)
 			return
 		}
@@ -80,7 +81,7 @@ func ValidateRequestBody(next http.Handler) http.Handler {
 		}
 
 		// Create a new request with the modified body
-		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 		// Call the next handler in the chain
 		next.ServeHTTP(w, r)
@@ -273,13 +274,12 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
 		}
 
-		ctx := context.WithValue(r.Context(),"userrole", userRole)
+		ctx := context.WithValue(r.Context(), "userrole", userRole)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 
 // 	return result.Token, nil
 // }
