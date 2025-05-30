@@ -146,15 +146,27 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	_, decodeSpan := otel.Tracer("auth_service").Start(ctx, "Decoding request body")
 	decodeSpan.End()
 
-	if err := json.NewDecoder(r.Body).Decode(&newUser); err != nil {
+
+	if err := r.ParseForm(); err != nil {
 		decodeSpan.RecordError(err)
-		http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Error parsing form data: "+err.Error(), http.StatusBadRequest)
 		// Increment error counter and record duration
 		requestCount.WithLabelValues("error").Inc()
 		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return
 	}
-	defer r.Body.Close()
+
+	newUser.Name = r.FormValue("name")
+	newUser.Email = r.FormValue("email")
+	newUser.Password = r.FormValue("password")
+
+	if newUser.Name == "" || newUser.Email == "" || newUser.Password == "" {
+		http.Error(w, "All fields (name, email, password) are required", http.StatusBadRequest)
+		// Increment error counter and record duration
+		requestCount.WithLabelValues("error").Inc()
+		requestDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
+		return
+	}
 
 	// Validate the required fields
 	if newUser.Name == "" || newUser.Password == "" {
