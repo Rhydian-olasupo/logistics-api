@@ -12,6 +12,8 @@ import (
 	"go_trial/gorest/middleware"
 
 	"github.com/gorilla/mux"
+
+	"go_trial/gorest/middleware/logkafka"
 )
 
 func main() {
@@ -105,11 +107,18 @@ func main() {
 	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.DeleteSingleMenuItem).Methods("DELETE")
 	//userRouter.HandleFunc("/menu-items/{id:[a-zA-Z0-9]*}", db.GetSingleleMenuItem).Methods("GET")
 
-	// Serve the main router
-	http.Handle("/", mainRouter)
+	// Initialize Kafka writer for logging
+	logkafka.InitKafkaWriter([]string{"localhost:9092"}, "logs")
+	defer logkafka.CloseKafkaWriter()
+
+	// Wrap the main router with the logging middleware
+	loggedRouter := logkafka.LoggingMiddleware(mainRouter)
+
+	// Serve the logged router
+	http.Handle("/", loggedRouter)
 
 	srv := &http.Server{
-		Handler:      mainRouter,
+		Handler:      loggedRouter,
 		Addr:         "127.0.0.1:8000",
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,

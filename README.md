@@ -35,7 +35,32 @@ Ensure you have the following installed:
 - [MongoDB](https://www.mongodb.com/) (v4.4 or later)  
 - [Flutter](https://flutter.dev/) (optional, for frontend).  
 
-### Installation  
+---
+
+### Project Structure
+
+```
+logistics-api/
+├── backend_test_app/      # Flutter mobile app (optional frontend)
+├── driver/                # Go entry point
+├── handlers/              # API endpoint handlers
+├── middleware/            # Custom middleware (auth, etc.)
+├── logkafka/              # Kafka logging integration
+├── models/                # Database models and logic
+├── telem/                 # Telemetry and observability
+├── utils/                 # Utility functions (e.g., MongoDB helpers)
+├── docker-compose.yml     # Docker orchestration
+├── go.mod, go.sum         # Go dependencies
+├── README.md              # Project documentation
+└── ...
+```
+
+- **backend_test_app/**: Contains a Flutter app for mobile frontend testing and integration.
+- **Go backend**: All Go source code for the API is in the root-level folders (driver, handlers, etc).
+
+---
+
+### Installation
 
 1. Clone the repository:  
    ```bash
@@ -60,6 +85,18 @@ Ensure you have the following installed:
    ```
 
 5. The API will be available at `http://localhost:8080`.
+
+---
+
+### Running with Docker
+
+You can run the API and MongoDB using Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+This will start both the Go API and a MongoDB instance as defined in `docker-compose.yml`.
 
 ---
 
@@ -113,6 +150,7 @@ Ensure you have the following installed:
 - **Routing**: Gorilla Mux  
 - **Password Security**: Bcrypt  
 - **Mobile Frontend**: Flutter  
+- **Containerization**: Docker, Docker Compose
 
 ---
 
@@ -124,5 +162,4 @@ We welcome contributions! To get started:
 3. Commit your changes and push.  
 4. Submit a Pull Request for review.  
 
----
 ---

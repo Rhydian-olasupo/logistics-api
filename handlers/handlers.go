@@ -230,7 +230,7 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send success response
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":     "User created successfully",
 		"inserted_id": result.InsertedID,
 	}
