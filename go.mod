@@ -5,7 +5,6 @@ go 1.22.7
 toolchain go1.23.4
 
 require (
-	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -26,6 +25,7 @@ require (
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.18.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/segmentio/kafka-go v0.4.48
 	github.com/stripe/stripe-go/v72 v72.122.0

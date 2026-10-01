@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # The Go API's metrics server (telem.InitMetrics), running on the host at :9000
+  - job_name: logistics-api
+    static_configs:
+      - targets: ["host.docker.internal:9000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

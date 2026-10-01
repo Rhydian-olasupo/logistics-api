@@ -95,15 +95,16 @@ logistics-api/
    go mod tidy
    ```
 
-3. Set up the environment variables by creating a `.env` file:  
-   ```plaintext
-   DB_URI=mongodb://localhost:27017
-   JWT_SECRET=your_secret_key
+3. Set up the environment variables by copying `.env.example` to `.env` and filling in a secret
+   (it is loaded automatically at startup via godotenv; `.env` is git-ignored):  
+   ```bash
+   cp .env.example .env
+   openssl rand -base64 32   # paste the output after JWT_SECRET=
    ```
 
-4. Run the server:  
+4. Run the server from the repository root (so `.env` is found):  
    ```bash
-   go run main.go
+   go run ./driver
    ```
 
 5. The API will be available at `http://localhost:8080`.

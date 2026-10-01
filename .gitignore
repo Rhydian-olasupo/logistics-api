@@ -1,4 +1,2 @@
-prometheus.yml
-otel-collector-config.yaml
-docker-compose.yml
 .DS_Store
+.env
