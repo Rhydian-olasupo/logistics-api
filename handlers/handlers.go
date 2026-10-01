@@ -17,7 +17,7 @@ package handlers
 // - time: for time-related functions.
 // - go_trial/gorest/models: for data models.
 // - go_trial/gorest/utils: for utility functions.
-// - github.com/golang-jwt/jwt: for JWT authentication.
+// - github.com/golang-jwt/jwt/v5: for JWT authentication.
 // - github.com/gorilla/mux: for HTTP request routing.
 // - github.com/prometheus/client_golang/prometheus: for metrics collection.
 // - go.mongodb.org/mongo-driver/bson: for BSON encoding and decoding.
@@ -37,10 +37,11 @@ import (
 	"strconv"
 	"time"
 
+	"go_trial/gorest/middleware"
 	"go_trial/gorest/models"
 	"go_trial/gorest/utils"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stripe/stripe-go/v72"
@@ -81,7 +82,8 @@ type UserFlat struct {
 	PasswordHash string      `json:"password" bson:"password"`
 }
 
-var secretKey = []byte(os.Getenv("session_secret"))
+// FIX: this package used golang-jwt v3 while middleware used v5, and each kept its own
+// copy of the secret. Both now use jwt/v5 and utils.JWTSecret().
 
 type Response struct {
 	AccessToken  string `json:"token" bson:"token"`
@@ -145,7 +147,6 @@ func (db *DB) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Decode request body
 	_, decodeSpan := otel.Tracer("auth_service").Start(ctx, "Decoding request body")
 	decodeSpan.End()
-
 
 	if err := r.ParseForm(); err != nil {
 		decodeSpan.RecordError(err)
@@ -302,7 +303,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 			"exp":      time.Now().Add(time.Hour * 1).Unix(), // Access token expires in 1 hour
 			"iat":      time.Now().Unix(),
 		})
-		tokenString, err := token.SignedString([]byte(secretKey))
+		tokenString, err := token.SignedString(utils.JWTSecret())
 		if err != nil {
 			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 			loginRequestsbyStatus.WithLabelValues("Error").Inc()
@@ -317,7 +318,7 @@ func (db *DB) LoginTokenHandler(w http.ResponseWriter, r *http.Request) {
 			"type":     "refresh",
 		})
 
-		refreshTokenString, err := refreshToken.SignedString([]byte(secretKey))
+		refreshTokenString, err := refreshToken.SignedString(utils.JWTSecret())
 		if err != nil {
 			http.Error(w, "Failed to generate token "+err.Error(), http.StatusInternalServerError)
 			loginRequestsbyStatus.WithLabelValues("Error").Inc()
@@ -374,7 +375,7 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 			return nil, fmt.Errorf("unexpected sigining method: %v", token.Header["alg"])
 		}
 
-		return []byte(secretKey), nil
+		return utils.JWTSecret(), nil
 
 	})
 
@@ -427,7 +428,7 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		"iat":      time.Now().Unix(),
 	})
 
-	newAccessTokenString, err := newAccessToken.SignedString([]byte(secretKey))
+	newAccessTokenString, err := newAccessToken.SignedString(utils.JWTSecret())
 	if err != nil {
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
 		return
@@ -457,7 +458,7 @@ func (db *DB) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username, ok := r.Context().Value("username").(string)
+	username, ok := middleware.UsernameFrom(r.Context())
 	if !ok {
 		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
 		return
@@ -512,7 +513,7 @@ func (db *DB) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *DB) GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username, _ := r.Context().Value("username").(string)
+	username, _ := middleware.UsernameFrom(r.Context())
 
 	// Query database for user details
 	var user models.SingleUser
@@ -556,6 +557,17 @@ func (db *DB) AssignGroupHandler(w http.ResponseWriter, r *http.Request) {
 	// Respond with success message
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "User assigned to group successfully"})
+}
+
+// roleFrom returns the role Authorize stored in the request context, or "" if none.
+//
+// FIX: handlers used to do r.Context().Value("userRole").(string), but Authorize stored
+// the role as "userrole" and the /groups routes never ran Authorize at all. The value was
+// nil, the type assertion panicked and the request died. An empty role now just falls
+// through to each handler's "Unauthorized" branch.
+func roleFrom(r *http.Request) string {
+	role, _ := middleware.UserRoleFrom(r.Context())
+	return role
 }
 
 func (db *DB) ManageMangersHandler(w http.ResponseWriter, r *http.Request) {
@@ -670,7 +682,7 @@ func (db *DB) GetAllManagersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userrole").(string)
+	userRole := roleFrom(r)
 	switch userRole {
 	case "Manager":
 		err := r.ParseForm()
@@ -681,6 +693,7 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 		username := r.PostForm.Get("username")
 		if username == "" {
 			http.Error(w, "Username is required", http.StatusInternalServerError)
+			return // FIX: missing return, an empty username used to be inserted anyway
 		}
 		var existingUser struct {
 			Name  string `json:"name" bson:"name"`
@@ -704,7 +717,7 @@ func (db *DB) assignUserToManagerHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	switch userRole {
 	case "Manager":
 		err := r.ParseForm()
@@ -715,6 +728,7 @@ func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Req
 		username := r.PostForm.Get("username")
 		if username == "" {
 			http.Error(w, "Username is required", http.StatusInternalServerError)
+			return // FIX: missing return, an empty username used to be inserted anyway
 		}
 		var existingUser struct {
 			Name  string `json:"name" bson:"name"`
@@ -742,7 +756,7 @@ func (db *DB) assignUsertoDeliveryCrewHandler(w http.ResponseWriter, r *http.Req
 // Delete the user from the Group they belong
 // There is a better way to write this, I will come back to this.
 func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	switch userRole {
 	case "Manager":
 		vars := mux.Vars(r)
@@ -776,7 +790,7 @@ func (db *DB) DeleteManagerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) DeleteDeliveryHandler(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	switch userRole {
 	case "Manager":
 		vars := mux.Vars(r)
@@ -867,7 +881,7 @@ func (db *DB) ManageMenuHanlder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	switch userRole {
 	case "Manager":
 		var menuitem models.MenuItem
@@ -893,15 +907,21 @@ func (db *DB) PostMenuItems(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// queryInt reads a positive integer query param, falling back to def and clamping to max.
+func queryInt(r *http.Request, key string, def, max int) int {
+	n, err := strconv.Atoi(r.URL.Query().Get(key))
+	if err != nil || n < 1 {
+		return def
+	}
+	return min(n, max)
+}
+
 // GET request handler to retrieve all menu items with category information
 func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
-	// Default pagination parameters
-	defaultPageSize := 5
-	defaultPage := 1
-
-	//Calculate pagination parameters
-	pageSize := defaultPageSize
-	page := defaultPage
+	// FIX: page and page size were fixed at 1 and 5, so clients could never see more than
+	// five menu items. They are now read from ?page=&perpage= (perpage capped at 100).
+	page := queryInt(r, "page", 1, 1<<20)
+	pageSize := queryInt(r, "perpage", 5, 100)
 
 	//Calculate skip count
 	skip := (page - 1) * pageSize
@@ -953,7 +973,7 @@ func (db *DB) GetMenuItems(w http.ResponseWriter, r *http.Request) {
 
 // Function to delete menu items from the menu collection
 func (db *DB) DeleteSingleMenuItem(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	fmt.Println(userRole)
 	switch userRole {
 	case "Manager":
@@ -972,7 +992,7 @@ func (db *DB) DeleteSingleMenuItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) GetSingleleMenuItem(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	fmt.Println(userRole)
 	var singleItem models.MenuItem
 	vars := mux.Vars(r)
@@ -992,7 +1012,7 @@ func (db *DB) GetSingleleMenuItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) PutSingleMenuItem(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	fmt.Println(userRole)
 	vars := mux.Vars(r)
 	id, _ := primitive.ObjectIDFromHex(vars["id"])
@@ -1021,7 +1041,7 @@ func (db *DB) PutSingleMenuItem(w http.ResponseWriter, r *http.Request) {
 
 // PATCH request handler to partially update an existing menu item
 func (db *DB) PatchMenuItems(w http.ResponseWriter, r *http.Request) {
-	userRole := r.Context().Value("userRole").(string)
+	userRole := roleFrom(r)
 	fmt.Println(userRole)
 	vars := mux.Vars(r)
 	id, _ := primitive.ObjectIDFromHex(vars["id"])
@@ -1062,7 +1082,7 @@ func (db *DB) ManageSingleItemHandler(w http.ResponseWriter, r *http.Request) {
 // Cart Management endpoints
 func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	// Retrieve username from context
-	username, ok := r.Context().Value("username").(string)
+	username, ok := middleware.UsernameFrom(r.Context())
 	if !ok {
 		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
 		return
@@ -1078,10 +1098,15 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	quantityStr := r.PostForm.Get("quantity")
 	menuItem := r.PostForm.Get("menuitem")
 
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	//Get unit price from title
-	unitprice, err := getUnitPriceFromTitle(menuItem)
+	unitprice, err := db.getUnitPriceFromTitle(ctx, menuItem)
 	if err != nil {
-		http.Error(w, "Cannot get unit price", http.StatusInternalServerError)
+		// FIX: missing return, the item used to be added to the cart with a price of 0
+		http.Error(w, "Cannot get unit price: "+err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Convert string values to appropriate types
@@ -1091,21 +1116,13 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Calculate the price
-	//Float the unit price not the quantity -- Fix
 	price := float64(quantity) * unitprice
 
 	// Get the user ID from the username
-	userIDStr, err := getUserIDFromUsername(username)
+	userID, err := db.getUserIDFromUsername(ctx, username)
 	if err != nil {
 		http.Error(w, "Failed to retrieve user ID", http.StatusInternalServerError)
 		return
-	}
-	// Convert the user ID string to primitive.ObjectID
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-
 	}
 
 	// Create a new Cart instance
@@ -1118,9 +1135,6 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert the cart item into the database
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	_, err = db.CartCollection.InsertOne(ctx, cart)
 	if err != nil {
 		http.Error(w, "Failed to add menu item to cart", http.StatusInternalServerError)
@@ -1131,99 +1145,85 @@ func (db *DB) PostMenuItemstoCart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Menu Item added to Cart successfully"})
-	// json.NewEncoder(w).Encode(result.InsertedID)
 }
 
-func getUserIDFromUsername(username string) (string, error) {
-	// Establish MongoDB connection with context
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
-	defer cancel()
-
-	client, err := utils.InitMongoClient()
-	if err != nil {
-		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
-	}
-	defer client.Disconnect(ctx)
-
-	// Get collection reference
-	IDCollection := utils.GetCollection(client, "apiDB", "logistics")
-
-	// Query and decode result
+// getUserIDFromUsername looks up a user's ObjectID by name.
+//
+// FIX: this used to open a brand-new MongoDB client on every call and always query the
+// hard-coded apiDB.logistics collection, ignoring db.Collection. That is why
+// TestPlaceNewOrderHandler (which uses testdb.users) could never find its user.
+// It now reuses db.Collection and returns the ObjectID directly instead of a hex string
+// that every caller had to convert back.
+func (db *DB) getUserIDFromUsername(ctx context.Context, username string) (primitive.ObjectID, error) {
 	var result struct {
 		ID primitive.ObjectID `json:"id" bson:"_id"`
 	}
-	err = IDCollection.FindOne(ctx, bson.M{"name": username}).Decode(&result)
+	err := db.Collection.FindOne(ctx, bson.M{"name": username}).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return "", fmt.Errorf("ID not found for username: %s", username)
+			return primitive.NilObjectID, fmt.Errorf("ID not found for username: %s", username)
 		}
-		return "", fmt.Errorf("error finding ID: %w", err) // Wrap errors for better handling
+		return primitive.NilObjectID, fmt.Errorf("error finding ID: %w", err) // Wrap errors for better handling
 	}
-
-	// Convert ObjectID to hexadecimal string
-	userID := result.ID.Hex()
-
-	return userID, nil
+	return result.ID, nil
 }
 
-func getUnitPriceFromTitle(menuTitle string) (float64, error) {
-	//Establish mongoDB connection with context
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	client, _ := utils.InitMongoClient()
-
-	//Get MenuItem Collection reference
-	Pricecollection := utils.GetCollection(client, "apiDB", "menuitems")
-
-	//Query and decode result
-
+// getUnitPriceFromTitle looks up a menu item's price by title.
+//
+// FIX: same new-client-per-call problem as above, and a lookup failure was only logged
+// while returning (0, nil), so unknown items were priced at 0. It now reuses
+// db.MenuItemCollection and returns the error.
+func (db *DB) getUnitPriceFromTitle(ctx context.Context, menuTitle string) (float64, error) {
 	var price struct {
 		Price float64 `json:"price" bson:"price"`
 	}
-
-	err := Pricecollection.FindOne(ctx, bson.M{"title": menuTitle}).Decode(&price)
+	err := db.MenuItemCollection.FindOne(ctx, bson.M{"title": menuTitle}).Decode(&price)
 	if err != nil {
-		log.Printf("Error finding price for menu item")
+		if err == mongo.ErrNoDocuments {
+			return 0, fmt.Errorf("menu item %q not found", menuTitle)
+		}
+		return 0, fmt.Errorf("error finding price for menu item: %w", err)
 	}
-
 	return price.Price, nil
+}
 
+// cartItemsForUser returns every cart item belonging to userID.
+// Shared by GetCartItemsForUser and PlaceNewOrderHandler.
+func (db *DB) cartItemsForUser(ctx context.Context, userID primitive.ObjectID) ([]models.Cart, error) {
+	cursor, err := db.CartCollection.Find(ctx, bson.M{"user": userID})
+	if err != nil {
+		return nil, fmt.Errorf("error querying cart items: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	cartItems := make([]models.Cart, 0)
+	if err := cursor.All(ctx, &cartItems); err != nil {
+		return nil, fmt.Errorf("error decoding cart items: %w", err)
+	}
+	return cartItems, nil
 }
 
 func (db *DB) GetCartItemsForUser(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
+	// FIX: comma-ok form instead of a bare assertion that panics when the value is missing
+	username, ok := middleware.UsernameFrom(r.Context())
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
 
-	userID, err := getUserIDFromUsername(username)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	userID, err := db.getUserIDFromUsername(ctx, username)
 	if err != nil {
 		log.Printf("Failed to get UserID from Username: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	fmt.Println(userID)
-	id, _ := primitive.ObjectIDFromHex(userID)
 
-	// Query Cart collection for given userID
-	cursor, err := db.CartCollection.Find(context.TODO(), bson.M{"user": id})
+	cartItems, err := db.cartItemsForUser(ctx, userID)
 	if err != nil {
-		log.Printf("Error querying cart items: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.TODO())
-
-	var cartItems = make([]models.Cart, 0)
-	for cursor.Next(context.TODO()) {
-		var cartItem models.Cart
-		if err := cursor.Decode(&cartItem); err != nil {
-			log.Printf("Failed to decode cart item: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		cartItems = append(cartItems, cartItem)
-	}
-	if err := cursor.Err(); err != nil {
-		log.Printf("Error while iterating over cart items: %v", err)
+		log.Printf("%v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -1241,20 +1241,27 @@ func (db *DB) GetCartItemsForUser(w http.ResponseWriter, r *http.Request) {
 
 // Endpoint to delete menu items from the menu collection
 func (db *DB) DeleteMenuItemsFromCart(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
+	// FIX: comma-ok form instead of a bare assertion that panics when the value is missing
+	username, ok := middleware.UsernameFrom(r.Context())
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
 
-	userID, err := getUserIDFromUsername(username)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	userID, err := db.getUserIDFromUsername(ctx, username)
 	if err != nil {
 		log.Printf("Failed to get UserID from Username: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	// fmt.Println(userID)
-	id, _ := primitive.ObjectIDFromHex(userID)
-	filter := bson.M{"user": id}
-	_, err = db.CartCollection.DeleteMany(context.TODO(), filter)
+	filter := bson.M{"user": userID}
+	_, err = db.CartCollection.DeleteMany(ctx, filter)
 	if err != nil {
 		http.Error(w, "Cannot delete database record", http.StatusBadRequest)
+		return // FIX: missing return, a success response used to follow the error
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1274,67 +1281,42 @@ func (db *DB) CartEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from token or context
-	username := r.Context().Value("username").(string)
-	userIDstr, err := getUserIDFromUsername(username)
+	// FIX: comma-ok form instead of a bare assertion that panics when the value is missing
+	username, ok := middleware.UsernameFrom(r.Context())
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	userID, err := db.getUserIDFromUsername(ctx, username)
 	if err != nil {
 		http.Error(w, "Cant get UserID from Username", http.StatusBadRequest)
 		return
 	}
-	// Convert the user ID string to primitive.ObjectID
-	userID, err := primitive.ObjectIDFromHex(userIDstr)
-	if err != nil {
-		http.Error(w, "Cant convert UserID to primitive.ObjectID", http.StatusBadRequest)
-		return
-	}
 
-	// Retrieve current cart items from the cart endpoint
-	cartURL := "http://localhost:8000/api/cart/menu-items"
-	req, err := http.NewRequest("GET", cartURL, nil)
-	if err != nil {
-		http.Error(w, "Failed to create request to retrieve cart items", http.StatusInternalServerError)
-		return
-	}
-	req.Header.Set("token", r.Header.Get("token")) // Pass the token to the cart endpoint
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// FIX: the cart used to be fetched by making an HTTP request back to this same server
+	// at a hard-coded http://localhost:8000/api/cart/menu-items. That broke whenever the
+	// address changed, couldn't work in tests, and added a network hop. Query the cart
+	// collection directly instead.
+	cartItems, err := db.cartItemsForUser(ctx, userID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve cart items", http.StatusInternalServerError)
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		http.Error(w, "Failed to retrieve cart items", resp.StatusCode)
-		return
-	}
-
-	var cartItems []models.Cart
-	if resp.ContentLength == 0 {
-		http.Error(w, "Empty response body", http.StatusInternalServerError)
-		return
-	}
-
-	if resp.Body == nil {
-		http.Error(w, "Response body is nil", http.StatusInternalServerError)
-		return
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
-		return
-	}
-	
-	err = json.Unmarshal(body, &cartItems)
-	if err != nil {
-		http.Error(w, "Failed to unmarshal cart items: "+err.Error(), http.StatusInternalServerError)
+	if len(cartItems) == 0 {
+		http.Error(w, "Cart is empty", http.StatusBadRequest)
 		return
 	}
 
 	// Create a new order
 	order := models.Order{
+		// FIX: the ID was never set, so it stayed as the zero ObjectID (omitempty let Mongo
+		// generate a different one) and every OrderItem below pointed at 000000000000000000000000.
+		// Generating it up front means order.ID matches the stored document.
+		ID:           primitive.NewObjectID(),
 		User:         userID,
 		DeliveryCrew: primitive.Null{},
 		Status:       false, // Assuming the order is initially not completed
@@ -1349,7 +1331,7 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	order.Total = totalPrice
 
 	// Insert the order into the database
-	_, err = db.OrdersCollection.InsertOne(context.Background(), order)
+	_, err = db.OrdersCollection.InsertOne(ctx, order)
 	if err != nil {
 		http.Error(w, "Failed to create new order", http.StatusInternalServerError)
 		return
@@ -1364,7 +1346,7 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 			UnitPrice: item.UnitPrice,
 			Price:     item.Price,
 		}
-		_, err := db.OrderItemCollection.InsertOne(context.Background(), orderItem)
+		_, err := db.OrderItemCollection.InsertOne(ctx, orderItem)
 		if err != nil {
 			http.Error(w, "Failed to create order item", http.StatusInternalServerError)
 			return
@@ -1372,7 +1354,7 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear the user's cart (delete all cart items)
-	_, err = db.CartCollection.DeleteMany(context.Background(), bson.M{"user": userID})
+	_, err = db.CartCollection.DeleteMany(ctx, bson.M{"user": userID})
 	if err != nil {
 		http.Error(w, "Failed to clear cart items", http.StatusInternalServerError)
 		return
@@ -1386,36 +1368,34 @@ func (db *DB) PlaceNewOrderHandler(w http.ResponseWriter, r *http.Request) {
 //Get Orders Endpoint
 
 func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	userIDstr, err := getUserIDFromUsername(username)
+	// FIX: comma-ok form instead of a bare assertion that panics when the value is missing
+	username, ok := middleware.UsernameFrom(r.Context())
+	if !ok {
+		http.Error(w, "Failed to retrieve username", http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	id, err := db.getUserIDFromUsername(ctx, username)
 	if err != nil {
 		http.Error(w, "Cant decode userID from username", http.StatusInternalServerError)
 		return
 	}
 
-	id, _ := primitive.ObjectIDFromHex(userIDstr)
-
-	// Query Cart collection for given userID
-	cursor, err := db.OrdersCollection.Find(context.TODO(), bson.M{"user": id})
+	// Query Orders collection for given userID
+	cursor, err := db.OrdersCollection.Find(ctx, bson.M{"user": id})
 	if err != nil {
-		log.Printf("Error querying cart items: %v", err)
+		log.Printf("Error querying orders: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	defer cursor.Close(context.TODO())
+	defer cursor.Close(ctx)
 
-	var orders []models.Order
-	for cursor.Next(context.TODO()) {
-		var order models.Order
-		if err := cursor.Decode(&order); err != nil {
-			log.Printf("Failed to decode cart item: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		orders = append(orders, order)
-	}
-	if err := cursor.Err(); err != nil {
-		log.Printf("Error while iterating over cart items: %v", err)
+	orders := make([]models.Order, 0)
+	if err := cursor.All(ctx, &orders); err != nil {
+		log.Printf("Failed to decode orders: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -1423,7 +1403,7 @@ func (db *DB) GetallOrders(w http.ResponseWriter, r *http.Request) {
 	// Encode the result as JSON and write to response
 	jsonBytes, err := json.Marshal(orders)
 	if err != nil {
-		log.Printf("Failed to encode cart items to JSON: %v", err)
+		log.Printf("Failed to encode orders to JSON: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"golang.org/x/crypto/bcrypt"
 
+	"go_trial/gorest/middleware"
 	"go_trial/gorest/models"
 )
 
@@ -36,7 +37,7 @@ func TestMain(m *testing.M) {
 
 	// Initialize the DB struct
 	db = &DB{
-		Collection:               client.Database("testdb").Collection("users"),
+		Collection: client.Database("testdb").Collection("users"),
 		// TokenCollection:          client.Database("testdb").Collection("tokens"),
 		MenuItemCollection:       client.Database("testdb").Collection("menuitems"),
 		UserGroup:                client.Database("testdb").Collection("usergroups"),
@@ -148,15 +149,20 @@ func TestLoginTokenHandler(t *testing.T) {
 func TestPlaceNewOrderHandler(t *testing.T) {
 	// Add a test user to the database to simulate an existing user
 	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
-	user := UserFlat{Name: "testuser", PasswordHash: string(passwordHash)}
+	// FIX: use a name no other test inserts. "testuser" already existed twice (from the
+	// create/login tests), so the handler's lookup by name found a different user than
+	// the one owning this cart.
+	user := UserFlat{Name: "orderuser", PasswordHash: string(passwordHash)}
 	insertResult, err := db.Collection.InsertOne(context.TODO(), user)
 	if err != nil {
 		t.Fatalf("Failed to insert test user: %v", err)
 	}
-	
+
 	// Capture the inserted user ID
 	userID := insertResult.InsertedID.(primitive.ObjectID)
-	
+	// FIX: user.ID was never set, so the order/cart checks below queried {"user": nil}
+	user.ID = userID
+
 	// Add test items to the cart
 	cartItem := models.Cart{
 		User:      userID,
@@ -175,8 +181,8 @@ func TestPlaceNewOrderHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
-	req = req.WithContext(context.WithValue(req.Context(), "username", "testuser"))
-	req.Header.Set("token", "test_token")
+	// FIX: the handler now reads the username via the middleware's typed context key
+	req = req.WithContext(context.WithValue(req.Context(), middleware.UsernameKey, "orderuser"))
 
 	// Create a ResponseRecorder to record the response
 	rr := httptest.NewRecorder()

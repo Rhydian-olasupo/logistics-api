@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -66,9 +67,14 @@ func InitMetrics(service string) (ShutdownMetrics, error) {
 	)
 	otel.SetMeterProvider(meterProvider)
 
-	srv := &http.Server{Addr: ":9000", Handler: promhttp.Handler()}
+	// FIX: the address was hard-coded; METRICS_ADDR now overrides the default :9000.
+	addr := os.Getenv("METRICS_ADDR")
+	if addr == "" {
+		addr = ":9000"
+	}
+	srv := &http.Server{Addr: addr, Handler: promhttp.Handler()}
 	go func() {
-		log.Println("Prometheus metrics server running at :9000/metrics")
+		log.Printf("Prometheus metrics server running at %s/metrics", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start Prometheus metrics server: %v", err)
 		}
@@ -88,8 +94,11 @@ type ShutdownTracing func(ctx context.Context) error
 func InitTracing(service string) (ShutdownTracing, error) {
 	exporter, err := otlptrace.New(
 		context.Background(),
+		// FIX: the endpoint was "localhost:8000", which is this API's own port, so spans
+		// were POSTed to /v1/traces on our own router and dropped. With no WithEndpoint,
+		// the exporter uses the OTLP/HTTP default (localhost:4318) or the
+		// OTEL_EXPORTER_OTLP_ENDPOINT env var if set.
 		otlptracehttp.NewClient(
-			otlptracehttp.WithEndpoint("localhost:8000"),
 			otlptracehttp.WithInsecure(),
 		),
 	)

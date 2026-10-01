@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -22,7 +23,14 @@ type LogMessage struct {
 	Extra     map[string]string `json:"extra"`
 }
 
-func InitKafkaES() {
+// InitKafkaES consumes log messages from Kafka and bulk-indexes them into Elasticsearch.
+// It runs until ctx is cancelled.
+//
+// FIX: brokers/topic were hard-coded and the loop could never be stopped. They are now
+// parameters, and cancelling ctx (on shutdown) closes the reader and flushes the last batch.
+// The Elasticsearch address comes from the ELASTICSEARCH_URL env var (default
+// http://localhost:9200), which elasticsearch.NewDefaultClient reads itself.
+func InitKafkaES(ctx context.Context, brokers []string, topic string) {
 	// Initialize Kafka and Elasticsearch connections
 	// This function sets up a Kafka consumer that reads log messages and pushes them to Elasticsearch.
 	// Ensure you have the necessary Kafka and Elasticsearch libraries installed.
@@ -31,8 +39,8 @@ func InitKafkaES() {
 	// This example assumes Kafka is running on localhost:9092 and Elasticsearch on localhost:9200.
 	// Kafka setup
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{"localhost:9092"},
-		Topic:   "logs",
+		Brokers: brokers,
+		Topic:   topic,
 		GroupID: "es-pusher",
 	})
 	defer kafkaReader.Close()
@@ -49,8 +57,8 @@ func InitKafkaES() {
 	const batchTimeout = 5 * time.Second
 
 	batch := make([]LogMessage, 0, batchSize)
-	timer := time.NewTimer(batchTimeout)
-	defer timer.Stop()
+	ticker := time.NewTicker(batchTimeout)
+	defer ticker.Stop()
 
 	flushBatch := func() {
 		if len(batch) == 0 {
@@ -70,6 +78,11 @@ func InitKafkaES() {
 		res, err := es.Bulk(bytes.NewReader(buf.Bytes()), es.Bulk.WithIndex("logs"))
 		if err != nil {
 			log.Printf("❌ Bulk index error: %v", err)
+		} else if res.IsError() {
+			// FIX: a 4xx/5xx from Elasticsearch is not a Go error, so failed bulk
+			// requests used to be reported as success.
+			log.Printf("❌ Bulk index error: %s", res.String())
+			res.Body.Close()
 		} else {
 			res.Body.Close()
 			log.Printf("✅ Batch of %d logs pushed to ES", len(batch))
@@ -77,15 +90,22 @@ func InitKafkaES() {
 		batch = batch[:0]
 	}
 
-	for {
-		select {
-		case <-timer.C:
-			flushBatch()
-			timer.Reset(batchTimeout)
-		default:
-			m, err := kafkaReader.ReadMessage(context.Background())
+	// FIX: this used to be `select { case <-timer.C: ... default: ReadMessage() }`.
+	// ReadMessage blocks until a message arrives, so the select only looked at the timer
+	// between messages: when traffic stopped, a partial batch sat unflushed indefinitely,
+	// and the default branch made it a busy loop. Reading in its own goroutine and
+	// feeding a channel lets the select wait on messages and the ticker at the same time.
+	msgs := make(chan LogMessage)
+	go func() {
+		defer close(msgs)
+		for {
+			m, err := kafkaReader.ReadMessage(ctx)
 			if err != nil {
+				if ctx.Err() != nil || err == io.EOF { // shutting down or reader closed
+					return
+				}
 				log.Printf("❌ Kafka read error: %v", err)
+				time.Sleep(time.Second) // avoid spinning while the broker is unreachable
 				continue
 			}
 
@@ -99,11 +119,22 @@ func InitKafkaES() {
 			if logMsg.Timestamp.IsZero() {
 				logMsg.Timestamp = time.Now()
 			}
+			msgs <- logMsg
+		}
+	}()
 
+	for {
+		select {
+		case <-ticker.C:
+			flushBatch()
+		case logMsg, ok := <-msgs:
+			if !ok {
+				flushBatch()
+				return
+			}
 			batch = append(batch, logMsg)
 			if len(batch) >= batchSize {
 				flushBatch()
-				timer.Reset(batchTimeout)
 			}
 		}
 	}

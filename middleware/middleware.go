@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -22,8 +21,9 @@ import (
 func EnableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, PATCH, DELETE")
+		// FIX: the API reads the JWT from a custom "token" header, which browsers only send if allowed here
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, token")
 		if r.Method == "OPTIONS" {
 			return
 		}
@@ -88,7 +88,28 @@ func ValidateRequestBody(next http.Handler) http.Handler {
 	})
 }
 
-var secretKey = []byte(os.Getenv("session_secret"))
+// FIX: context values used to be stored under plain strings ("username", "userrole")
+// and read back under different spellings ("userRole"), so lookups returned nil and
+// the handlers' .(string) assertions panicked. A private key type means nothing outside
+// this package can collide with these keys, and the compiler catches typos.
+type contextKey string
+
+const (
+	UsernameKey contextKey = "username"
+	UserRoleKey contextKey = "userrole"
+)
+
+// UsernameFrom returns the username set by SetCurrentUserMiddleware or Authorize.
+func UsernameFrom(ctx context.Context) (string, bool) {
+	username, ok := ctx.Value(UsernameKey).(string)
+	return username, ok
+}
+
+// UserRoleFrom returns the role set by Authorize.
+func UserRoleFrom(ctx context.Context) (string, bool) {
+	role, ok := ctx.Value(UserRoleKey).(string)
+	return role, ok
+}
 
 // // Define a custom type for context key
 // type contextKey string
@@ -184,7 +205,8 @@ func SetCurrentUserMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Set the username value in the request context
-		ctx := context.WithValue(r.Context(), "username", username)
+		// FIX: use the typed key instead of the plain string "username"
+		ctx := context.WithValue(r.Context(), UsernameKey, username)
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
 
@@ -203,7 +225,7 @@ func getUsernameFromToken(r *http.Request) (string, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		// Replace 'secretKey' with your actual secret key ([]byte)
-		return secretKey, nil
+		return utils.JWTSecret(), nil
 	})
 
 	if err != nil || !token.Valid {
@@ -236,7 +258,7 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
 			// Replace 'secretKey' with your actual secret key ([]byte)
-			return secretKey, nil
+			return utils.JWTSecret(), nil
 		})
 		if err != nil || !token.Valid {
 			w.WriteHeader(http.StatusForbidden)
@@ -249,11 +271,21 @@ func JWTTokenValidationMiddleware(next http.Handler) http.Handler {
 }
 
 // Middleware function to enforce role-base authorization
-func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
+//
+// FIX: Authorize now takes the UserGroup collection from main instead of opening a
+// brand-new MongoDB client (and connection pool) on every request in getUserRoleFromDB.
+func Authorize(userGroups *mongo.Collection, next http.Handler, requiredRoles ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// FIX: the token error used to be ignored, so a bad token fell through with an
+		// empty username and was treated as a "Customer". Reject it up front instead.
+		username, err := getUsernameFromToken(r)
+		if err != nil {
+			http.Error(w, "Access Denied; Please check the access token", http.StatusForbidden)
+			return
+		}
+
 		//Retrieve authenticated user's role from UserGroup collection
-		username, _ := getUsernameFromToken(r)
-		userRole, err := getUserRoleFromDB(username)
+		userRole, err := getUserRoleFromDB(r.Context(), userGroups, username)
 		if err != nil {
 			http.Error(w, "Cant retrieve user role from database record", http.StatusInternalServerError)
 			return
@@ -272,36 +304,30 @@ func Authorize(next http.Handler, requiredRoles ...string) http.Handler {
 
 		if !authorized {
 			http.Error(w, "Unathorized", http.StatusUnauthorized)
+			// FIX: without this return the request carried on to the handler anyway
+			return
 		}
 
-		ctx := context.WithValue(r.Context(), "userrole", userRole)
+		// FIX: store role and username under the typed keys so handlers can read them back
+		ctx := context.WithValue(r.Context(), UserRoleKey, userRole)
+		ctx = context.WithValue(ctx, UsernameKey, username)
 
 		// Call the next handler in the chain with the modified context
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// 	return result.Token, nil
-// }
-
 // Function to get userRole from the UserGroup collection
-func getUserRoleFromDB(username string) (string, error) {
-	// Establish MongoDB connection with context
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Adjust timeout as needed
+func getUserRoleFromDB(ctx context.Context, userGroups *mongo.Collection, username string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second) // Adjust timeout as needed
 	defer cancel()
-	client, err := utils.InitMongoClient()
-	if err != nil {
-		return "", fmt.Errorf("error initializing MongoDB client: %w", err)
-	}
-	defer client.Disconnect(ctx)
-	// Get collection reference
-	UserGroupcollection := utils.GetCollection(client, "apiDB", "UserGroup")
+
 	// Query and decode result
 	var userGroup struct {
 		Group string `json:"group" bson:"group"`
 	}
 
-	err = UserGroupcollection.FindOne(ctx, bson.M{"name": username}).Decode(&userGroup)
+	err := userGroups.FindOne(ctx, bson.M{"name": username}).Decode(&userGroup)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// User not found in UserGroup collection, return default role for customers
